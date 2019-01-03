@@ -22,24 +22,30 @@ class WordML:
     def __init__(self, tree_builder: TreeBuilder):
         self.tree_builder = tree_builder
 
-    def _write_w_rPr(self, ascii=None, hAnsi=None, hint=None, cs=None):
-        t = self.tree_builder
-        t.start('w:rPr')
+    def _write_w_rPr(self, ascii=None, hAnsi=None, hint=None, cs=None,
+                     i=False):
+        if ascii or hAnsi or hint or cs or i:
+            t = self.tree_builder
+            t.start('w:rPr')
 
-        fonts = {}
-        if ascii is not None:
-            fonts['w:ascii'] = ascii
-        if hAnsi is not None:
-            fonts['w:hAnsi'] = hAnsi
-        if hint is not None:
-            fonts['w:hint'] = hint
-        if cs is not None:
-            fonts['w:cs'] = cs
-        if ascii or hAnsi or hint or cs:
-            t.start('w:rFonts', fonts)
-            t.end('w:rFonts')
+            fonts = {}
+            if ascii is not None:
+                fonts['w:ascii'] = ascii
+            if hAnsi is not None:
+                fonts['w:hAnsi'] = hAnsi
+            if hint is not None:
+                fonts['w:hint'] = hint
+            if cs is not None:
+                fonts['w:cs'] = cs
+            if ascii or hAnsi or hint or cs:
+                t.start('w:rFonts', fonts)
+                t.end('w:rFonts')
 
-        t.end('w:rPr')
+            if i:
+                t.start('w:i')
+                t.end('w:i')
+
+            t.end('w:rPr')
 
     def write_paragraph(self, *data):
         t = self.tree_builder
@@ -62,17 +68,19 @@ class WordML:
 
     # math related
     def _write_m_rPr(self, sty=None):
-        t = self.tree_builder
-        t.start('m:rPr')
-        if sty is not None:
-            t.start('m:sty', {'m:val': sty})
-            t.end('m:sty')
-        t.end('m:rPr')
+        if sty:
+            t = self.tree_builder
+            t.start('m:rPr')
+            if sty is not None:
+                t.start('m:sty', {'m:val': sty})
+                t.end('m:sty')
+            t.end('m:rPr')
 
-    def _write_m_ctrlPr(self, ascii=None, hAnsi=None):
+    def _write_m_ctrlPr(self, ascii='Cambria Math', hAnsi='Cambria Math',
+                        i=False):
         t = self.tree_builder
         t.start('m:ctrlPr')
-        self._write_w_rPr(ascii=ascii, hAnsi=hAnsi)
+        self._write_w_rPr(ascii=ascii, hAnsi=hAnsi, i=i)
         t.end('m:ctrlPr')
 
     def write_mathpara(self, *data):
@@ -92,6 +100,23 @@ class WordML:
 
     def write_variable(self, var):
         self._write_math_text(var)
+
+    def _write_m_run(self, run: str,
+                     sty=None,
+                     ascii='Cambria Math', hAnsi='Cambria Math', hint=None, cs=None):
+        t = self.tree_builder
+        t.start('m:r')
+
+        self._write_m_rPr(sty=sty)
+        self._write_w_rPr(ascii=ascii,
+                          hAnsi=hAnsi,
+                          hint=hint,
+                          cs=cs)
+        t.start('m:t')
+        t.data(run)
+        t.end('m:t')
+
+        t.end('m:r')
 
     def _write_math_operator(self, operator):
         t = self.tree_builder
@@ -124,17 +149,17 @@ class WordML:
 
     def write_add(self, left, right):
         left.write_to(self)
-        self._write_math_operator('+')
+        self._write_m_run('+', sty='p')
         right.write_to(self)
 
     def write_sub(self, left, right):
         left.write_to(self)
-        self._write_math_operator('-')
+        self._write_m_run('-', sty='p')
         right.write_to(self)
 
     def write_mul(self, left, right):
         left.write_to(self)
-        self._write_math_operator('*')
+        self._write_m_run('*', sty='p')
         right.write_to(self)
 
     def write_div(self, left, right):
@@ -142,7 +167,7 @@ class WordML:
         t.start('m:f')
 
         t.start('m:fPr')
-        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambri Math')
+        self._write_m_ctrlPr()
         t.end('m:fPr')
 
         t.start('m:num')
@@ -164,7 +189,7 @@ class WordML:
             t.start('m:degHide', {'m:val': 'on'})
             t.end('m:degHide')
 
-        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
+        self._write_m_ctrlPr()
 
         t.end('m:radPr')
 
@@ -179,42 +204,175 @@ class WordML:
 
         t.end('m:rad')
 
-    def write_pow(self, exp, index):
+    def _write_sSup(self, base, sup):
         t = self.tree_builder
         t.start('m:sSup')
         t.start('m:sSupPr')
 
-        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
+        self._write_m_ctrlPr()
 
         t.end('m:sSupPr')
+
+        t.start('m:e')
+        base.write_to(self)
+        t.end('m:e')
+
+        t.start('m:sup')
+        sup.write_to(self)
+        t.end('m:sup')
+
+        t.end('m:sSup')
+
+    def _write_sSubSup(self, base, sub, sup):
+        t = self.tree_builder
+        t.start('m:sSubSup')
+
+        t.start('m:sSubSupPr')
+        self._write_m_ctrlPr()
+        t.end('m:sSubSupPr')
+
+        t.start('m:e')
+        base.write_to(self)
+        t.end('m:e')
+
+        t.start('m:sub')
+        sub.write_to(self)
+        t.end('m:sub')
+
+        t.start('m:sup')
+        sup.write_to(self)
+        t.end('m:sup')
+
+        t.end('m:sSubSup')
+
+    def _write_nary(self, exp, sub, sup, name=None, limLoc='subSup'):
+        t = self.tree_builder
+        t.start('m:nary')
+
+        t.start('m:naryPr')
+
+        if name is not None:
+            t.start('m:chr', {'m:val': name})
+            t.end('m:chr')
+
+        t.start('m:limLoc', {'m:val': limLoc})
+        t.end('m:limLoc')
+
+        self._write_m_ctrlPr(i=True)
+
+        t.start('m:sub')
+        sub.write_to(self)
+        t.end('m:sub')
+
+        t.start('m:sup')
+        sup.write_to(self)
+        t.end('m:sup')
 
         t.start('m:e')
         exp.write_to(self)
         t.end('m:e')
 
-        t.start('m:sup')
-        index.write_to(self)
-        t.end('m:sup')
+        t.end('m:nary')
 
-        t.end('m:sSup')
+    def write_pow(self, exp, index):
+        self._write_sSup(exp, index)
 
-    def _write_delimeter(self, exp_list, left='(', right=')', sep='|'):
+    def write_pow_with_sub(self, exp, sub, index):
+        self._write_sSubSup(exp, sub, index)
+
+    def write_sum(self, exp, sub, sup):
+        self._write_nary(exp, sub, sup, name='∑', limLoc='undOvr')
+
+    def write_integrate(self, exp, var, sub, sup):
+        # TODO: 需要完善积分与微分运算部分，微分运算似乎有点复杂。
+        pass
+
+    def _write_func(self, name, exp):
+        t = self.tree_builder
+        t.start('m:func')
+
+        t.start('m:funcPr')
+        self._write_m_ctrlPr()
+        t.end('m:funcPr')
+
+        t.start('m:fName')
+        self._write_m_run(name, sty='p')
+        t.end('m:fName')
+
+        t.start('m:e')
+        exp.write_to(self)
+        t.end('m:e')
+
+        t.end('m:func')
+
+    def write_sin(self, exp):
+        self._write_func('sin', exp)
+
+    def write_cos(self, exp):
+        self._write_func('cos', exp)
+
+    def write_tan(self, exp):
+        self._write_func('tan', exp)
+
+    def write_cot(self, exp):
+        self._write_func('cot', exp)
+
+    def write_asin(self, exp):
+        self._write_func('arcsin', exp)
+
+    def write_acos(self, exp):
+        self._write_func('arccos', exp)
+
+    def write_atan(self, exp):
+        self._write_func('arctan', exp)
+
+    def write_acot(self, exp):
+        self._write_func('arccot', exp)
+
+    def _write_delimeter(self, *exps, left='(', right=')', sep='|'):
         t = self.tree_builder
         t.start('m:d')
 
         t.start('m:dPr')
+
+        t.start('m:begChr', {'m:val': left})
+        t.end('m:begChr')
+
+        t.start('m:endChr', {'m:val': right})
+        t.end('m:endChr')
+
         self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
         t.end('m:dPr')
 
-        for exp in exp_list:
+        for exp in exps:
             t.start('m:e')
             exp.write_to(self)
             t.end('m:e')
 
-        t.end('m:e')
+        t.end('m:d')
 
     def write_parenthesis(self, exp):
-        pass
+        self._write_delimeter(exp, left='(', right=')')
+
+    def write_square_bracket(self, exp):
+        self._write_delimeter(exp, left='[', right=']')
+
+    def write_brace(self, exp):
+        self._write_delimeter(exp, left='{', right='}')
+
+    def _write_eqArr(self, *exps):
+        t = self.tree_builder
+        t.start('m:eqArr')
+
+        t.start('m:eqArrPr')
+        self._write_m_ctrlPr(ascii='Cambria Math',
+                             hAnsi='Cambria Math')
+        t.end('m:eqArrPr')
+
+        for exp in exps:
+            exp.write_to(self)
+
+        t.end('m:eq')
 
 
 class DocX:

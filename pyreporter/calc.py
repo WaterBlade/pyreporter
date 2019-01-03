@@ -101,8 +101,9 @@ class Pow(Expression):
 
     def write_to(self, doc):
         if isinstance(self.left, Variable) and self.left.subscript is not None:
-            # TODO: 有下标的指数运算需要特别考虑
-            pass
+            left = self.left.copy()
+            left.subscript = None
+            doc.write_pow_with_sub(left, Variable(self.left.subscript), self.right)
         else:
             doc.write_pow(self.left, self.right)
 
@@ -137,6 +138,14 @@ class Tan(Expression):
 
     def write_to(self, doc):
         doc.write_tan(self.left)
+
+
+class Cot(Expression):
+    def calc(self):
+        return 1 / math.tan(self.left.calc())
+
+    def write_to(self, doc):
+        doc.write_cot(self.left)
 
 
 # parenthesis: ()
