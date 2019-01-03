@@ -139,6 +139,33 @@ class Tan(Expression):
         doc.write_tan(self.left)
 
 
+# parenthesis: ()
+class Pr(Expression):
+    def calc(self):
+        return self.left.calc()
+
+    def write_to(self, doc):
+        doc.write_parenthesis(self.left)
+
+
+# square bracket: []
+class Sq(Expression):
+    def calc(self):
+        return self.left.calc()
+
+    def write_to(self, doc):
+        doc.write_bracket(self.left)
+
+
+# brace: {}
+class Br(Expression):
+    def calc(self):
+        return self.left.calc()
+
+    def write_to(self, doc):
+        doc.write_brace(self.left)
+
+
 class Variable(Expression):
     def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2):
         super().__init__()

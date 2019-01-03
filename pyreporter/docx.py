@@ -22,30 +22,73 @@ class WordML:
     def __init__(self, tree_builder: TreeBuilder):
         self.tree_builder = tree_builder
 
-    def write_paragraph(self, para: str):
+    def _write_w_rPr(self, ascii=None, hAnsi=None, hint=None, cs=None):
+        t = self.tree_builder
+        t.start('w:rPr')
+
+        fonts = {}
+        if ascii is not None:
+            fonts['w:ascii'] = ascii
+        if hAnsi is not None:
+            fonts['w:hAnsi'] = hAnsi
+        if hint is not None:
+            fonts['w:hint'] = hint
+        if cs is not None:
+            fonts['w:cs'] = cs
+        if ascii or hAnsi or hint or cs:
+            t.start('w:rFonts', fonts)
+            t.end('w:rFonts')
+
+        t.end('w:rPr')
+
+    def write_paragraph(self, *data):
         t = self.tree_builder
         t.start('w:p')
+        for item in data:
+            if isinstance(item, str):
+                self.write_run(item)
+            else:
+                item.write_to(self)
+        t.end('w:p')
+
+    def write_run(self, text: str):
+        t = self.tree_builder
         t.start('w:r')
-        t.start('w:rPr')
-        t.start('w:rFonts', {'w:hint': 'eastAsia'})
-        t.end('w:rFonts')
-        t.end('w:rPr')
+        self._write_w_rPr(hint='eastAsia')
         t.start('w:t')
-        t.data(para)
+        t.data(text)
         t.end('w:t')
         t.end('w:r')
-        t.end('w:p')
+
+    # math related
+    def _write_m_rPr(self, sty=None):
+        t = self.tree_builder
+        t.start('m:rPr')
+        if sty is not None:
+            t.start('m:sty', {'m:val': sty})
+            t.end('m:sty')
+        t.end('m:rPr')
+
+    def _write_m_ctrlPr(self, ascii=None, hAnsi=None):
+        t = self.tree_builder
+        t.start('m:ctrlPr')
+        self._write_w_rPr(ascii=ascii, hAnsi=hAnsi)
+        t.end('m:ctrlPr')
 
     def write_mathpara(self, *data):
         t = self.tree_builder
         t.start('w:p')
         t.start('m:oMathPara')
+        self.write_math(*data)
+        t.end('m:oMathPara')
+        t.end('w:p')
+
+    def write_math(self, *data):
+        t = self.tree_builder
         t.start('m:oMath')
         for item in data:
             item.write_to(self)
         t.end('m:oMath')
-        t.end('m:oMathPara')
-        t.end('w:p')
 
     def write_variable(self, var):
         self._write_math_text(var)
@@ -54,16 +97,10 @@ class WordML:
         t = self.tree_builder
         t.start('m:r')
 
-        t.start('m:rPr')
-        t.start('m:sty', {'m:val': 'p'})
-        t.end('m:sty')
-        t.end('m:rPr')
-
-        t.start('w:rPr')
-        t.start('w:rFonts',
-                {'w:ascii': 'Cambria Math', 'w:hAnsi': 'Cambria Math', 'w:cs': 'Cambria Math'})
-        t.end('w:rFonts')
-        t.end('w:rPr')
+        self._write_m_rPr(sty='p')
+        self._write_w_rPr(ascii='Cambria Math',
+                          hAnsi='Cambria Math',
+                          cs='Cambria Math')
 
         t.start('m:t')
         t.data(operator)
@@ -75,11 +112,9 @@ class WordML:
         t = self.tree_builder
         t.start('m:r')
 
-        t.start('w:rPr')
-        t.start('w:rFonts',
-                {'w:ascii': 'Cambria Math', 'w:hAnsi': 'Cambria Math', 'w:cs': 'Cambria Math'})
-        t.end('w:rFonts')
-        t.end('w:rPr')
+        self._write_w_rPr(ascii='Cambria Math',
+                          hAnsi='Cambria Math',
+                          cs='Cambria Math')
 
         t.start('m:t')
         t.data(text)
@@ -107,13 +142,7 @@ class WordML:
         t.start('m:f')
 
         t.start('m:fPr')
-        t.start('m:ctrlPr')
-        t.start('w:rPr')
-        t.start('w:rFonts',
-                {'w:ascii': 'Cambria Math', 'w:hAnsi': 'Cambria Math'})
-        t.end('w:rFonts')
-        t.end('w:rPr')
-        t.end('m:ctrlPr')
+        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambri Math')
         t.end('m:fPr')
 
         t.start('m:num')
@@ -135,15 +164,7 @@ class WordML:
             t.start('m:degHide', {'m:val': 'on'})
             t.end('m:degHide')
 
-        t.start('m:ctrlPr')
-        t.start('w:rPr')
-
-        t.start('w:rFonts',
-                {'w:ascii': 'Cambria Math', 'w:hAnsi': 'Cambria Math'})
-        t.end('w:rFonts')
-
-        t.end('w:rPr')
-        t.end('m:ctrlPr')
+        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
 
         t.end('m:radPr')
 
@@ -163,15 +184,7 @@ class WordML:
         t.start('m:sSup')
         t.start('m:sSupPr')
 
-        t.start('m:ctrlPr')
-        t.start('w:rPr')
-
-        t.start('w:rFonts',
-                {'w:ascii': 'Cambria Math', 'w:hAnsi': 'Cambria Math'})
-        t.end('w:rFonts')
-
-        t.end('w:rPr')
-        t.end('m:ctrlPr')
+        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
 
         t.end('m:sSupPr')
 
@@ -184,6 +197,24 @@ class WordML:
         t.end('m:sup')
 
         t.end('m:sSup')
+
+    def _write_delimeter(self, exp_list, left='(', right=')', sep='|'):
+        t = self.tree_builder
+        t.start('m:d')
+
+        t.start('m:dPr')
+        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
+        t.end('m:dPr')
+
+        for exp in exp_list:
+            t.start('m:e')
+            exp.write_to(self)
+            t.end('m:e')
+
+        t.end('m:e')
+
+    def write_parenthesis(self, exp):
+        pass
 
 
 class DocX:
