@@ -1,393 +1,155 @@
-from xml.etree.ElementTree import tostring, TreeBuilder
+from xml.etree.ElementTree import tostring, Element
 from zipfile import ZipFile, ZIP_DEFLATED
 from collections import namedtuple
-from typing import List
-
 
 DataFile = namedtuple('DataFile', 'path xml')
 
 
+# copied from the standard library
+class TreeBuilder:
+    """Generic element structure builder.
+
+    This builder converts a sequence of start, data, and end method
+    calls to a well-formed element structure.
+
+    You can use this class to build an element structure using a custom XML
+    parser, or a parser for some other XML-like format.
+
+    *element_factory* is an optional element factory which is called
+    to create new Element instances, as necessary.
+
+    """
+
+    def __init__(self, element_factory=None):
+        self._data = []  # data collector
+        self._elem = []  # element stack
+        self._last = None  # last element
+        self._tail = None  # true if we're after an end tag
+        if element_factory is None:
+            element_factory = Element
+        self._factory = element_factory
+
+    def close(self):
+        """Flush builder buffers and return toplevel document Element."""
+        assert len(self._elem) == 0, "missing end tags"
+        assert self._last is not None, "missing toplevel element"
+        return self._last
+
+    def _flush(self):
+        if self._data:
+            if self._last is not None:
+                text = "".join(self._data)
+                if self._tail:
+                    assert self._last.tail is None, "internal error (tail)"
+                    self._last.tail = text
+                else:
+                    assert self._last.text is None, "internal error (text)"
+                    self._last.text = text
+            self._data = []
+
+    def data(self, data):
+        """Add text to current element."""
+        self._data.append(data)
+
+    def start(self, tag, attrs=None):
+        """Open new element and return it.
+
+        *tag* is the element name, *attrs* is a dict containing element
+        attributes.
+
+        """
+        if attrs is None:
+            attrs = {}
+        self._flush()
+        self._last = elem = self._factory(tag, attrs)
+        if self._elem:
+            self._elem[-1].append(elem)
+        self._elem.append(elem)
+        self._tail = 0
+        return elem
+
+    def end(self, tag):
+        """Close and return current Element.
+
+        *tag* is the element name.
+
+        """
+        self._flush()
+        self._last = self._elem.pop()
+        assert self._last.tag == tag, "end tag mismatch (expected %s, got %s)" % (self._last.tag, tag)
+        self._tail = 1
+        return self._last
+
+    def add(self, element):
+        """Add Element to last Element"""
+        assert self._last is not None
+        self._last.append(element)
+
+
+def make_element(tag, *items) -> Element:
+    ele = Element(tag)
+    last_ele = None
+    for item in items:
+        if isinstance(item, Element):
+            ele.append(item)
+            last_ele = item
+        elif isinstance(item, list) or isinstance(item, tuple):
+            ele.extend(flat(item))
+        elif isinstance(item, dict):
+            ele.attrib.update(item)
+        elif isinstance(item, str):
+            if last_ele is None:
+                ele.text = item
+            else:
+                last_ele.tail = item
+    return ele
+
+
+def add(root: Element, child: Element):
+    if child is not None:
+        root.append(child)
+
+
+def flat(nest_list):
+    ret = []
+    for item in nest_list:
+        if isinstance(item, tuple) or isinstance(item, list):
+            ret.extend(flat(item))
+        else:
+            ret.append(item)
+    return ret
+
+
+E = make_element
+
+
 class SequenceGenerator:
-    def __init__(self, prefix: str='', start: int=0):
+    def __init__(self, prefix: str = '', start: int = 0):
         self.prefix = prefix
         self.index = start
 
-    def generate(self):
+    @property
+    def id_(self):
         ret = f'{self.prefix}{self.index}'
         self.index += 1
         return ret
-
-
-class WordML:
-    def __init__(self, tree_builder: TreeBuilder):
-        self.tree_builder = tree_builder
-
-    def _write_w_rPr(self, ascii=None, hAnsi=None, hint=None, cs=None,
-                     i=False):
-        if ascii or hAnsi or hint or cs or i:
-            t = self.tree_builder
-            t.start('w:rPr')
-
-            fonts = {}
-            if ascii is not None:
-                fonts['w:ascii'] = ascii
-            if hAnsi is not None:
-                fonts['w:hAnsi'] = hAnsi
-            if hint is not None:
-                fonts['w:hint'] = hint
-            if cs is not None:
-                fonts['w:cs'] = cs
-            if ascii or hAnsi or hint or cs:
-                t.start('w:rFonts', fonts)
-                t.end('w:rFonts')
-
-            if i:
-                t.start('w:i')
-                t.end('w:i')
-
-            t.end('w:rPr')
-
-    def write_paragraph(self, *data):
-        t = self.tree_builder
-        t.start('w:p')
-        for item in data:
-            if isinstance(item, str):
-                self.write_run(item)
-            else:
-                item.write_to(self)
-        t.end('w:p')
-
-    def write_run(self, text: str):
-        t = self.tree_builder
-        t.start('w:r')
-        self._write_w_rPr(hint='eastAsia')
-        t.start('w:t')
-        t.data(text)
-        t.end('w:t')
-        t.end('w:r')
-
-    # math related
-    def _write_m_rPr(self, sty=None):
-        if sty:
-            t = self.tree_builder
-            t.start('m:rPr')
-            if sty is not None:
-                t.start('m:sty', {'m:val': sty})
-                t.end('m:sty')
-            t.end('m:rPr')
-
-    def _write_m_ctrlPr(self, ascii='Cambria Math', hAnsi='Cambria Math',
-                        i=False):
-        t = self.tree_builder
-        t.start('m:ctrlPr')
-        self._write_w_rPr(ascii=ascii, hAnsi=hAnsi, i=i)
-        t.end('m:ctrlPr')
-
-    def write_mathpara(self, *data):
-        t = self.tree_builder
-        t.start('w:p')
-        t.start('m:oMathPara')
-        self.write_math(*data)
-        t.end('m:oMathPara')
-        t.end('w:p')
-
-    def write_math(self, *data):
-        t = self.tree_builder
-        t.start('m:oMath')
-        for item in data:
-            item.write_to(self)
-        t.end('m:oMath')
-
-    def write_variable(self, var):
-        self._write_math_text(var)
-
-    def _write_m_run(self, run: str,
-                     sty=None,
-                     ascii='Cambria Math', hAnsi='Cambria Math', hint=None, cs=None):
-        t = self.tree_builder
-        t.start('m:r')
-
-        self._write_m_rPr(sty=sty)
-        self._write_w_rPr(ascii=ascii,
-                          hAnsi=hAnsi,
-                          hint=hint,
-                          cs=cs)
-        t.start('m:t')
-        t.data(run)
-        t.end('m:t')
-
-        t.end('m:r')
-
-    def _write_math_operator(self, operator):
-        t = self.tree_builder
-        t.start('m:r')
-
-        self._write_m_rPr(sty='p')
-        self._write_w_rPr(ascii='Cambria Math',
-                          hAnsi='Cambria Math',
-                          cs='Cambria Math')
-
-        t.start('m:t')
-        t.data(operator)
-        t.end('m:t')
-
-        t.end('m:r')
-
-    def _write_math_text(self, text):
-        t = self.tree_builder
-        t.start('m:r')
-
-        self._write_w_rPr(ascii='Cambria Math',
-                          hAnsi='Cambria Math',
-                          cs='Cambria Math')
-
-        t.start('m:t')
-        t.data(text)
-        t.end('m:t')
-
-        t.end('m:r')
-
-    def write_add(self, left, right):
-        left.write_to(self)
-        self._write_m_run('+', sty='p')
-        right.write_to(self)
-
-    def write_sub(self, left, right):
-        left.write_to(self)
-        self._write_m_run('-', sty='p')
-        right.write_to(self)
-
-    def write_mul(self, left, right):
-        left.write_to(self)
-        self._write_m_run('*', sty='p')
-        right.write_to(self)
-
-    def write_div(self, left, right):
-        t = self.tree_builder
-        t.start('m:f')
-
-        t.start('m:fPr')
-        self._write_m_ctrlPr()
-        t.end('m:fPr')
-
-        t.start('m:num')
-        left.write_to(self)
-        t.end('m:num')
-
-        t.start('m:den')
-        right.write_to(self)
-        t.end('m:den')
-
-        t.end('m:f')
-
-    def write_radical(self, exp, index):
-        t = self.tree_builder
-        t.start('m:rad')
-        t.start('m:radPr')
-
-        if index.value == 2:
-            t.start('m:degHide', {'m:val': 'on'})
-            t.end('m:degHide')
-
-        self._write_m_ctrlPr()
-
-        t.end('m:radPr')
-
-        t.start('m:deg')
-        if index.value > 2:
-            index.write_to(self)
-        t.end('m:deg')
-
-        t.start('m:e')
-        exp.write_to(self)
-        t.end('m:e')
-
-        t.end('m:rad')
-
-    def _write_sSup(self, base, sup):
-        t = self.tree_builder
-        t.start('m:sSup')
-        t.start('m:sSupPr')
-
-        self._write_m_ctrlPr()
-
-        t.end('m:sSupPr')
-
-        t.start('m:e')
-        base.write_to(self)
-        t.end('m:e')
-
-        t.start('m:sup')
-        sup.write_to(self)
-        t.end('m:sup')
-
-        t.end('m:sSup')
-
-    def _write_sSubSup(self, base, sub, sup):
-        t = self.tree_builder
-        t.start('m:sSubSup')
-
-        t.start('m:sSubSupPr')
-        self._write_m_ctrlPr()
-        t.end('m:sSubSupPr')
-
-        t.start('m:e')
-        base.write_to(self)
-        t.end('m:e')
-
-        t.start('m:sub')
-        sub.write_to(self)
-        t.end('m:sub')
-
-        t.start('m:sup')
-        sup.write_to(self)
-        t.end('m:sup')
-
-        t.end('m:sSubSup')
-
-    def _write_nary(self, exp, sub, sup, name=None, limLoc='subSup'):
-        t = self.tree_builder
-        t.start('m:nary')
-
-        t.start('m:naryPr')
-
-        if name is not None:
-            t.start('m:chr', {'m:val': name})
-            t.end('m:chr')
-
-        t.start('m:limLoc', {'m:val': limLoc})
-        t.end('m:limLoc')
-
-        self._write_m_ctrlPr(i=True)
-
-        t.start('m:sub')
-        sub.write_to(self)
-        t.end('m:sub')
-
-        t.start('m:sup')
-        sup.write_to(self)
-        t.end('m:sup')
-
-        t.start('m:e')
-        exp.write_to(self)
-        t.end('m:e')
-
-        t.end('m:nary')
-
-    def write_pow(self, exp, index):
-        self._write_sSup(exp, index)
-
-    def write_pow_with_sub(self, exp, sub, index):
-        self._write_sSubSup(exp, sub, index)
-
-    def write_sum(self, exp, sub, sup):
-        self._write_nary(exp, sub, sup, name='∑', limLoc='undOvr')
-
-    def write_integrate(self, exp, var, sub, sup):
-        # TODO: 需要完善积分与微分运算部分，微分运算似乎有点复杂。
-        pass
-
-    def _write_func(self, name, exp):
-        t = self.tree_builder
-        t.start('m:func')
-
-        t.start('m:funcPr')
-        self._write_m_ctrlPr()
-        t.end('m:funcPr')
-
-        t.start('m:fName')
-        self._write_m_run(name, sty='p')
-        t.end('m:fName')
-
-        t.start('m:e')
-        exp.write_to(self)
-        t.end('m:e')
-
-        t.end('m:func')
-
-    def write_sin(self, exp):
-        self._write_func('sin', exp)
-
-    def write_cos(self, exp):
-        self._write_func('cos', exp)
-
-    def write_tan(self, exp):
-        self._write_func('tan', exp)
-
-    def write_cot(self, exp):
-        self._write_func('cot', exp)
-
-    def write_asin(self, exp):
-        self._write_func('arcsin', exp)
-
-    def write_acos(self, exp):
-        self._write_func('arccos', exp)
-
-    def write_atan(self, exp):
-        self._write_func('arctan', exp)
-
-    def write_acot(self, exp):
-        self._write_func('arccot', exp)
-
-    def _write_delimeter(self, *exps, left='(', right=')', sep='|'):
-        t = self.tree_builder
-        t.start('m:d')
-
-        t.start('m:dPr')
-
-        t.start('m:begChr', {'m:val': left})
-        t.end('m:begChr')
-
-        t.start('m:endChr', {'m:val': right})
-        t.end('m:endChr')
-
-        self._write_m_ctrlPr(ascii='Cambria Math', hAnsi='Cambria Math')
-        t.end('m:dPr')
-
-        for exp in exps:
-            t.start('m:e')
-            exp.write_to(self)
-            t.end('m:e')
-
-        t.end('m:d')
-
-    def write_parenthesis(self, exp):
-        self._write_delimeter(exp, left='(', right=')')
-
-    def write_square_bracket(self, exp):
-        self._write_delimeter(exp, left='[', right=']')
-
-    def write_brace(self, exp):
-        self._write_delimeter(exp, left='{', right='}')
-
-    def _write_eqArr(self, *exps):
-        t = self.tree_builder
-        t.start('m:eqArr')
-
-        t.start('m:eqArrPr')
-        self._write_m_ctrlPr(ascii='Cambria Math',
-                             hAnsi='Cambria Math')
-        t.end('m:eqArrPr')
-
-        for exp in exps:
-            exp.write_to(self)
-
-        t.end('m:eq')
 
 
 class DocX:
     def __init__(self, path=''):
         self.path = path  # type: str
 
-        self.data_list = list()
+        self.document_tree = None  # type: TreeBuilder
+        self.document_xml_rels_tree = None  # type: TreeBuilder
 
         self.file_list = list()
+        self.figure_list = list()
 
-        self.doc_rel_id_gen = SequenceGenerator('rId', 1)
+        self.id_gen = SequenceGenerator('rId', 1)
 
     def _add_xml(self, path: str, xml: str):
         head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        self.file_list.append(DataFile(path=path, xml=head+xml))
+        self.file_list.append(DataFile(path=path, xml=head + xml))
 
     def build_content_type(self):
         xml = """<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/><Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/><Override PartName="/word/webSettings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.webSettings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>"""
@@ -402,18 +164,49 @@ class DocX:
         self._add_xml(path='docProps/app.xml', xml=xml)
 
     def build_core(self):
-        xml = """<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>Tao</dc:creator><cp:lastModifiedBy>Tao</cp:lastModifiedBy><cp:revision>1</cp:revision><dcterms:created xsi:type="dcterms:W3CDTF">2019-01-02T03:30:00Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">2019-01-02T03:30:00Z</dcterms:modified></cp:coreProperties>"""
+        xml = """<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>Tao</dc:creator><cp:lastModifiedBy>HHPDI</cp:lastModifiedBy><cp:revision>1</cp:revision><dcterms:created xsi:type="dcterms:W3CDTF">2019-01-01T00:00:00Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">2019-01-01T00:00:00Z</dcterms:modified></cp:coreProperties>"""
         self._add_xml(path='docProps/core.xml', xml=xml)
 
+    def build_document_xml_rels_tree(self):
+        ns = {'xmlns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
+        tree = TreeBuilder()
+        self.document_xml_rels_tree = tree
+        tree.start('Relationships', ns)
+
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+                                "theme/theme1.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+                                "webSettings.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+                                "fontTable.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+                                "settings.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+                                "styles.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+                                "endnotes.xml")
+        self.write_relationship(self.id_gen.id_,
+                                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+                                "footnotes.xml")
+
     def build_document_xml_rels(self):
-        xml = """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings" Target="webSettings.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="theme/theme1.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/></Relationships>"""
+        tree = self.document_xml_rels_tree
+        tree.end('Relationships')
+
+        xml = tostring(self.document_xml_rels_tree.close(), encoding='unicode')
         self._add_xml(path='word/_rels/document.xml.rels', xml=xml)
 
     def build_theme1(self):
         xml = """<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office 主题​​"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2><a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="等线 Light" panose="020F0302020204030204"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="游ゴシック Light"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="等线 Light"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Times New Roman"/><a:font script="Hebr" typeface="Times New Roman"/><a:font script="Thai" typeface="Angsana New"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="MoolBoran"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Times New Roman"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/><a:font script="Armn" typeface="Arial"/><a:font script="Bugi" typeface="Leelawadee UI"/><a:font script="Bopo" typeface="Microsoft JhengHei"/><a:font script="Java" typeface="Javanese Text"/><a:font script="Lisu" typeface="Segoe UI"/><a:font script="Mymr" typeface="Myanmar Text"/><a:font script="Nkoo" typeface="Ebrima"/><a:font script="Olck" typeface="Nirmala UI"/><a:font script="Osma" typeface="Ebrima"/><a:font script="Phag" typeface="Phagspa"/><a:font script="Syrn" typeface="Estrangelo Edessa"/><a:font script="Syrj" typeface="Estrangelo Edessa"/><a:font script="Syre" typeface="Estrangelo Edessa"/><a:font script="Sora" typeface="Nirmala UI"/><a:font script="Tale" typeface="Microsoft Tai Le"/><a:font script="Talu" typeface="Microsoft New Tai Lue"/><a:font script="Tfng" typeface="Ebrima"/></a:majorFont><a:minorFont><a:latin typeface="等线" panose="020F0502020204030204"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="游明朝"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="等线"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Arial"/><a:font script="Hebr" typeface="Arial"/><a:font script="Thai" typeface="Cordia New"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="DaunPenh"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Arial"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/><a:font script="Armn" typeface="Arial"/><a:font script="Bugi" typeface="Leelawadee UI"/><a:font script="Bopo" typeface="Microsoft JhengHei"/><a:font script="Java" typeface="Javanese Text"/><a:font script="Lisu" typeface="Segoe UI"/><a:font script="Mymr" typeface="Myanmar Text"/><a:font script="Nkoo" typeface="Ebrima"/><a:font script="Olck" typeface="Nirmala UI"/><a:font script="Osma" typeface="Ebrima"/><a:font script="Phag" typeface="Phagspa"/><a:font script="Syrn" typeface="Estrangelo Edessa"/><a:font script="Syrj" typeface="Estrangelo Edessa"/><a:font script="Syre" typeface="Estrangelo Edessa"/><a:font script="Sora" typeface="Nirmala UI"/><a:font script="Tale" typeface="Microsoft Tai Le"/><a:font script="Talu" typeface="Microsoft New Tai Lue"/><a:font script="Tfng" typeface="Ebrima"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:lumMod val="110000"/><a:satMod val="105000"/><a:tint val="67000"/></a:schemeClr></a:gs><a:gs pos="50000"><a:schemeClr val="phClr"><a:lumMod val="105000"/><a:satMod val="103000"/><a:tint val="73000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:lumMod val="105000"/><a:satMod val="109000"/><a:tint val="81000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:satMod val="103000"/><a:lumMod val="102000"/><a:tint val="94000"/></a:schemeClr></a:gs><a:gs pos="50000"><a:schemeClr val="phClr"><a:satMod val="110000"/><a:lumMod val="100000"/><a:shade val="100000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:lumMod val="99000"/><a:satMod val="120000"/><a:shade val="78000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln><a:ln w="12700" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln><a:ln w="19050" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/><a:miter lim="800000"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="57150" dist="19050" dir="5400000" algn="ctr" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="63000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"><a:tint val="95000"/><a:satMod val="170000"/></a:schemeClr></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="93000"/><a:satMod val="150000"/><a:shade val="98000"/><a:lumMod val="102000"/></a:schemeClr></a:gs><a:gs pos="50000"><a:schemeClr val="phClr"><a:tint val="98000"/><a:satMod val="130000"/><a:shade val="90000"/><a:lumMod val="103000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="63000"/><a:satMod val="120000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="5400000" scaled="0"/></a:gradFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/><a:extLst><a:ext uri="{05A4C25C-085E-4340-85A3-A5531E510DB2}"><thm15:themeFamily xmlns:thm15="http://schemas.microsoft.com/office/thememl/2012/main" name="Office Theme" id="{62F939B6-93AF-4DB8-9C6B-D6C7DFDC589F}" vid="{4A3C46E8-61CC-4603-A589-7422A47A8E4A}"/></a:ext></a:extLst></a:theme>"""
         self._add_xml(path='word/theme/theme1.xml', xml=xml)
 
-    def build_document(self):
+    def build_document_tree(self):
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -424,32 +217,16 @@ class DocX:
               'xmlns:w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
         tree = TreeBuilder()
+        self.document_tree = tree
         tree.start('w:document', ns)
         tree.start('w:body')
 
-        for data in self.data_list:
-            data.write_to(WordML(tree))
-
-        tree.start('w:sectPr')
-
-        tree.start('w:pgSz', {'w:w': '11906', 'w:h': '16838'})
-        tree.end('w:pgSz')
-
-        tree.start('w:pgMar', {'w:top': '1440', 'w:right': '1800',
-                               'w:bottom': '1440', 'w:left': '1800',
-                               'w:footer': '992', 'w:gutter': '0'})
-        tree.end('w:pgMar')
-
-        tree.start('w:cols', {'w:space': '425'})
-        tree.end('w:cols')
-
-        tree.start('w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'})
-        tree.end('w:docGrid')
-
-        tree.end('w:sectPr')
+    def build_document(self):
+        tree = self.document_tree
         tree.end('w:body')
         tree.end('w:document')
-        xml = tostring(tree.close(), encoding='unicode')
+
+        xml = tostring(self.document_tree.close(), encoding='unicode')
         self._add_xml(path='word/document.xml', xml=xml)
 
     def build_endnotes(self):
@@ -474,7 +251,11 @@ class DocX:
         xml = """<w:webSettings xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:optimizeForBrowser/></w:webSettings>"""
         self._add_xml(path='word/webSettings.xml', xml=xml)
 
-    def build(self):
+    def build_root(self):
+        self.build_document_tree()
+        self.build_document_xml_rels_tree()
+
+    def build_docx(self):
         # dir: .
         self.build_content_type()
         # dir: ./_rels
@@ -498,12 +279,452 @@ class DocX:
     def save(self, path_name=None):
         if path_name is not None:
             self.path = path_name
-        self.build()
 
         with ZipFile(self.path, 'w', ZIP_DEFLATED) as z:
             for f in self.file_list:
                 z.writestr(f.path, data=f.xml)
 
-    def write(self, data_list):
-        self.data_list = data_list
+    def write_docx(self, doc):
+        self.build_root()
+        for data in doc.data_list:
+            data.write_to(self)
+        self.build_docx()
         self.save()
+
+    # ===============================================================
+    # document.xml
+    # ===============================================================
+
+    def _write_w_sectPr(self):
+        ele = E('w:sectPr',
+                E('w:pgSz', {'w:w': '11906', 'w:h': '16838'}),
+                E('w:pgMar', {'w:top': '1440', 'w:right': '1800',
+                              'w:bottom': '1440', 'w:left': '1800',
+                              'w:footer': '992', 'w:gutter': '0'}),
+                E('w:cols', {'w:space': '425'}),
+                E('w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'}))
+        self.document_tree.add(ele)
+
+    def _write_w_rFonts(self, ascii=None, hAnsi=None, hint=None, cs=None):
+        if ascii or hAnsi or hint or cs:
+            fonts = {}
+            if ascii is not None:
+                fonts['w:ascii'] = ascii
+            if hAnsi is not None:
+                fonts['w:hAnsi'] = hAnsi
+            if hint is not None:
+                fonts['w:hint'] = hint
+            if cs is not None:
+                fonts['w:cs'] = cs
+
+            self.document_tree.add(E('w:rFonts', fonts))
+
+    def _write_w_rPr(self, ascii=None, hAnsi=None, hint=None, cs=None, i=False):
+        tree = self.document_tree
+        tree.start('w:rPr')
+        self._write_w_rFonts(ascii, hAnsi, hint, cs)
+        if i:
+            tree.add(E('w:i'))
+        tree.end('w:rPr')
+
+    def _write_w_pPr(self, jc=None, ascii=None, hAnsi=None, hint=None, cs=None, i=False):
+        tree = self.document_tree
+        tree.start('w:pPr')
+        if jc:
+            tree.add(E('w:jc', {'w:jc': jc}))
+        self._write_w_rPr(ascii, hAnsi, hint, cs, i)
+        tree.end('w:pPr')
+
+    def _write_w_tblPr(self, tblStyle='a7', tblW_w='0', tblW_type='auto', tblLook='04A0'):
+        ele = E('w:tblPr',
+                E('w:tblStyle', {'w:val': tblStyle}),
+                E('w:tblW', {'w:w': tblW_w, 'w:type': tblW_type}),
+                E('w:tblLook', {'w:val', tblLook}))
+        self.document_tree.add(ele)
+
+    def _write_w_tcPr(self, tcW_w='0', tcW_type='auto', vAlign='center'):
+        ele = E('w:tcPr',
+                E('w:tcW', {'w:w': tcW_w, 'w:type': tcW_type}),
+                E('w:vAlign', {'w:val': vAlign}))
+        self.document_tree.add(ele)
+
+    def write_paragraph(self, *data,
+                        jc=None,
+                        ascii=None, hAnsi=None, hint=None, cs=None,
+                        i=False):
+        tree = self.document_tree
+        tree.start('w:p')
+        self._write_w_pPr(jc=jc, ascii=ascii, hAnsi=hAnsi, hint=hint, cs=cs, i=i)
+        for item in data:
+            if isinstance(item, str):
+                self.write_run(item)
+            elif isinstance(item, float) or isinstance(item, int):
+                self.write_run(str(item))
+            else:
+                item.write_to(self)
+        tree.end('w:p')
+
+    def write_run(self, text: str, *, hint='eastAsia'):
+        tree = self.document_tree
+        tree.start('w:r')
+        self._write_w_rPr(hint=hint)
+        tree.add(E('w:t', text))
+        tree.end('w:r')
+
+    def write_table(self, data_by_rows):
+        tree = self.document_tree
+        tree.start('w:tbl')
+
+        self._write_w_tblPr()
+
+        for row in data_by_rows:
+            tree.start('w:tr')
+            for col in row:
+                tree.start('w:tc')
+                self._write_w_tcPr()
+                self.write_paragraph(col)
+                tree.end('w:tc')
+            tree.end('w:tr')
+        tree.end('w:tbl')
+
+    def _write_a_graphic(self, fig_id, rel_id, cx, cy):
+        ele = E('a:graphic', {'xmlns:a': "http://schemas.openxmlformats.org/drawingml/2006/main"},
+                E('a:graphicData', {'uri': "http://schemas.openxmlformats.org/drawingml/2006/picture"},
+                  E('pic:pic', {'xmlns:pic': "http://schemas.openxmlformats.org/drawingml/2006/picture"},
+                    E('pic:nvPicPr',
+                      E('pic:cNvPr', {'id': f'{fig_id}', 'name': f'image{fig_id}', 'descr': f'image{fig_id}'})),
+                    E('pic:blipFill',
+                      E('a:blip', {'r:embed': rel_id}),
+                      E('a:stretch'),
+                      E('a:fillRect')),
+                    E('pic:spPr',
+                      E('a:xfrm',
+                        E('a:off', {'x': '0', 'y': '0'}),
+                        E('a:ext', {'cx': f'{cx}', 'cy': f'{cy}'})),
+                      E('a:prstGeom',
+                        E('a:avLst', {'prst': 'rect'}))))))
+        self.document_tree.add(ele)
+
+    def write_inline_figure(self, data, ext, cx, cy):
+        cx *= 914400
+        cy *= 914400
+
+        fig_id = self.id_gen.index
+        rel_id = self.id_gen.id_
+
+        self.figure_list.append([data, ext])
+
+        tree = self.document_tree
+
+        tree.start('w:r')
+
+        tree.start('w:drawing')
+
+        tree.start('wp:inline')
+
+        tree.add(E('wp:extent', {'cx': f'{cx}', 'cy': f'{cy}'}))
+        tree.add(E('wp:effectExtent', {'l': '0', 't': '0', 'r': '0', 'b': '0'}))
+        tree.add(E('wp:docPr',
+                   {'id': f'{fig_id}', 'name': f'image{fig_id}', 'descr': f'image{fig_id}'}))
+
+        tree.add(E('wp:cNvGraphicFramePr',
+                   E('a:graphicFrameLocks',
+                     {'xmlns:a': "http://schemas.openxmlformats.org/drawingml/2006/main", 'noChangeAspect': 'true'})))
+
+        self._write_a_graphic(fig_id, rel_id, cx, cy)
+
+        tree.end('wp:inline')
+
+        tree.end('w:drawing')
+
+        tree.end('w:r')
+
+    def write_standalone_figure(self, data, ext, cx, cy,
+                                xoff=0, yoff=0,
+                                xspec=None, yspec=None):
+        cx *= 914400
+        cy *= 914400
+        xoff *= 914400
+        yoff *= 914400
+
+        fig_id = self.id_gen.index
+        rel_id = self.id_gen.id_
+
+        self.figure_list.append([data, ext])
+
+        if xspec is not None:
+            xpos = E('wp:align', xspec)
+        else:
+            xpos = E('wp:posOffset', '%d' % xoff)
+
+        if yspec is not None:
+            ypos = E('wp:align', yspec)
+        else:
+            ypos = E('wp:posOffset', '%d' % yoff)
+
+        tree = self.document_tree
+
+        tree.start('w:p')
+        tree.start('w:drawing')
+        tree.start('wp:anchor',
+                   {'simplePos': '0',
+                    'relativeHeight': '1',
+                    'behindDoc': '0',
+                    'locked': '0',
+                    'layoutInCell': '1',
+                    'allowOverlap': '1'})
+
+        tree.add(E('wp:simplePos', {'x': '0', 'y': '0'}))
+        tree.add(E('wp_positionH', {'relativeFrom': 'margin'}, xpos))
+        tree.add(E('wp_positionV', {'relativeFrom': 'margin'}, ypos))
+
+        tree.add(E('wp:extent', {'cx': f'{cx}', 'cy': f'{cy}'}))
+        tree.add(E('wp:effectExtent', {'l': '0', 't': '0', 'r': '0', 'b': '0'}))
+        tree.add(E('wp_wrapTopAndBottom'))
+        tree.add(E('wp:docPr', {'id': f'{fig_id}', 'name': f'image{fig_id}', 'descr': f'image{fig_id}'}))
+
+        tree.add(E('wp:cNvGraphicFramePr',
+                   E('a:graphicFrameLocks',
+                     {'xmlns:a': "http://schemas.openxmlformats.org/drawingml/2006/main", 'noChangeAspect': 'true'})))
+
+        self._write_a_graphic(fig_id, rel_id, cx, cy)
+
+        tree.end('wp:anchor')
+        tree.end('w:drawing')
+        tree.end('w:p')
+
+    # math related
+    def _write_m_rPr(self, sty=None):
+        if sty:
+            self.document_tree.add(E('m:rPr', E('m:sty', {'m:val': sty})))
+
+    def _write_m_ctrlPr(self, ascii='Cambria Math', hAnsi='Cambria Math', i=False):
+        tree = self.document_tree
+        tree.start('m:ctrlPr')
+        self._write_w_rPr(ascii=ascii, hAnsi=hAnsi, i=i)
+        tree.end('m:ctrlPr')
+
+    def write_mathpara(self, datas):
+        tree = self.document_tree
+        tree.start('w:p')
+        tree.start('m:oMathPara')
+        self.write_math(datas)
+        tree.end('m:oMathPara')
+        tree.end('w:p')
+
+    def write_math(self, datas):
+        tree = self.document_tree
+        tree.start('m:oMath')
+        for item in datas:
+            item.write_to(self)
+        tree.end('m:oMath')
+
+    def _write_m_run(self, run: str, sty=None,
+                     ascii='Cambria Math', hAnsi='Cambria Math', hint=None, cs=None):
+        tree = self.document_tree
+        tree.start('m:r')
+        self._write_m_rPr(sty)
+        self._write_w_rPr(ascii, hAnsi, hint, cs)
+        tree.add(E('m:t', run))
+        tree.end('m:r')
+
+    def write_variable(self, var):
+        self._write_m_run(var)
+
+    def write_subscript_variable(self, base, sub):
+        self._sSup(base, sub)
+
+    def write_add(self, left, right):
+        left.write_to(self)
+        self._write_m_run('+', sty='p')
+        right.write_to(self)
+
+    def write_sub(self, left, right):
+        left.write_to(self)
+        self._write_m_run('-', sty='p')
+        right.write_to(self)
+
+    def write_mul(self, left, right):
+        left.write_to(self)
+        self._write_m_run('⋅', sty='p')
+        right.write_to(self)
+
+    def __write_math_element(self, name, exp):
+        tree = self.document_tree
+        tree.start(name)
+        if exp is not None:
+            exp.write_to(self)
+        tree.end(name)
+
+    def write_div(self, left, right):
+        tree = self.document_tree
+
+        tree.start('m:f')
+        tree.start('m:fPr')
+        self._write_m_ctrlPr()
+        tree.end('m:fPr')
+        self.__write_math_element('m:num', left)
+        self.__write_math_element('m:den', right)
+        tree.end('m:f')
+
+    def write_radical(self, exp, index):
+        tree = self.document_tree
+        tree.start('m:rad')
+
+        tree.start('m:radPr')
+        if index.value == 2:
+            tree.add(E('m:degHide', {'m:val': 'on'}))
+        self._write_m_ctrlPr()
+        tree.end('m:radPr')
+
+        self.__write_math_element('m:deg', index if index.value != 2 else None)
+        self.__write_math_element('m:e', exp)
+
+        tree.end('m:rad')
+
+    def _sSup(self, base, sup):
+        tree = self.document_tree
+        tree.start('m:sSup')
+
+        tree.start('m:sSupPr')
+        self._write_m_ctrlPr()
+        tree.end('m:sSupPr')
+
+        self.__write_math_element('m:e', base)
+        self.__write_math_element('m:sup', sup)
+
+        tree.end('m:sSup')
+
+    def _sSubSup(self, base, sub, sup):
+        tree = self.document_tree
+        tree.start('m:sSubSup')
+
+        tree.start('m:sSubSupPr')
+        self._write_m_ctrlPr()
+        tree.end('m:sSubSupPr')
+
+        self.__write_math_element('m:e', base)
+        self.__write_math_element('m:sub', base)
+        self.__write_math_element('m:sup', sup)
+
+        tree.end('m:sSubSup')
+
+    def _nary(self, exp, sub, sup, name=None, limLoc='subSup'):
+        tree = self.document_tree
+        tree.start('m:nary')
+
+        tree.start('m:naryPr')
+        if name:
+            tree.add(E('m:chr', {'m:val': name}))
+        tree.add(E('m:limLoc', {'m:val': limLoc}))
+        self._write_m_ctrlPr(i=True)
+        tree.end('m:naryPr')
+
+        self.__write_math_element('m:sub', sub)
+        self.__write_math_element('m:sup', sup)
+        self.__write_math_element('m:e', exp)
+
+        tree.end('m:nary')
+
+    def write_pow(self, exp, index):
+        self._sSup(exp, index)
+
+    def write_pow_with_sub(self, exp, sub, index):
+        self._sSubSup(exp, sub, index)
+
+    def write_sum(self, exp, sub, sup):
+        self._nary(exp, sub, sup, name='∑', limLoc='undOvr')
+
+    def write_integrate(self, exp, var, sub, sup):
+        # TODO: 需要完善积分与微分运算部分，微分运算似乎有点复杂。
+        pass
+
+    def _func(self, name, exp):
+        tree = self.document_tree
+        tree.start('m:func')
+
+        tree.start('m:funcPr')
+        self._write_m_ctrlPr()
+        tree.end('m:funcPr')
+
+        tree.start('m:fName')
+        self._write_m_run(name, sty='p')
+        tree.end('m:fName')
+
+        self.__write_math_element('m:e', exp)
+
+        tree.end('m:func')
+
+    def write_sin(self, exp):
+        self._func('sin', exp)
+
+    def write_cos(self, exp):
+        self._func('cos', exp)
+
+    def write_tan(self, exp):
+        self._func('tan', exp)
+
+    def write_cot(self, exp):
+        self._func('cot', exp)
+
+    def write_asin(self, exp):
+        self._func('arcsin', exp)
+
+    def write_acos(self, exp):
+        self._func('arccos', exp)
+
+    def write_atan(self, exp):
+        self._func('arctan', exp)
+
+    def write_acot(self, exp):
+        self._func('arccot', exp)
+
+    def _delimeter(self, *exps, left='(', right=')', sep='|'):
+        tree = self.document_tree
+        tree.start('m:d')
+
+        tree.start('m:dPr')
+        tree.add(E('m:begChr', {'m:val': left}))
+        tree.add(E('m:endChr', {'m:val': right}))
+        self._write_m_ctrlPr()
+        tree.end('m:dPr')
+
+        for exp in exps:
+            self.__write_math_element('m:e', exp)
+
+        tree.end('m:d')
+
+    def write_parenthesis(self, exp):
+        self._delimeter(exp, left='(', right=')')
+
+    def write_square_bracket(self, exp):
+        self._delimeter(exp, left='[', right=']')
+
+    def write_brace(self, exp):
+        self._delimeter(exp, left='{', right='}')
+
+    def _eqArr(self, exps):
+        tree = self.document_tree
+        tree.start('m:eqArr')
+
+        tree.start('m:eqArrPr')
+        self._write_m_ctrlPr()
+        tree.end('m:eqArrPr')
+
+        for exp in exps:
+            self.__write_math_element('m:e', exp)
+
+        tree.end('m:eqArr')
+
+    # ===============================================================
+    # document.xml
+    # ===============================================================
+
+    # ===============================================================
+    # document.xml.rels
+    # ===============================================================
+
+    def write_relationship(self, id_, type_, target):
+        tree = self.document_xml_rels_tree
+        tree.add(E('Relationship',
+                   {'Id': id_, 'Type': type_, 'Target': target}))
