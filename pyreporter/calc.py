@@ -116,6 +116,22 @@ class Radical(Expression):
         doc.write_radical(self.left, self.right)
 
 
+class ToDegree(Expression):
+    def calc(self):
+        return math.degrees(self.left.calc())
+
+    def write_to(self, doc):
+        self.left.write_to(doc)
+
+
+class ToRadian(Expression):
+    def calc(self):
+        return math.radians(self.left.calc())
+
+    def write_to(self, doc):
+        self.left.write_to(doc)
+
+
 class Sin(Expression):
     def calc(self):
         return math.sin(self.left.calc())
@@ -146,6 +162,38 @@ class Cot(Expression):
 
     def write_to(self, doc):
         doc.write_cot(self.left)
+
+
+class ASin(Expression):
+    def calc(self):
+        return math.asin(self.left.calc())
+
+    def write_to(self, doc):
+        doc.write_arcsin(self.left)
+
+
+class ACos(Expression):
+    def calc(self):
+        return math.acos(self.left.calc())
+
+    def write_to(self, doc):
+        doc.write_arccos(self.left)
+
+
+class ATan(Expression):
+    def calc(self):
+        return math.atan(self.left.calc())
+
+    def write_to(self, doc):
+        doc.write_arctan(self.left)
+
+
+class ACot(Expression):
+    def calc(self):
+        return math.pi - math.atan(self.left.calc())
+
+    def write_to(self, doc):
+        doc.write_arccot(self.left)
 
 
 # parenthesis: ()
@@ -197,7 +245,10 @@ class Variable(Expression):
             return self.value
 
     def write_to(self, doc):
-        doc.write_variable(self.symbol)
+        if self.subscript is None:
+            doc.write_variable(self.symbol)
+        else:
+            doc.write_subscript_variable(V(self.symbol), V(self.subscript))
 
     def assign(self, value, unit=None):
         if unit is not None:

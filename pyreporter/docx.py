@@ -93,8 +93,6 @@ def make_element(tag, *items) -> Element:
         if isinstance(item, Element):
             ele.append(item)
             last_ele = item
-        elif isinstance(item, list) or isinstance(item, tuple):
-            ele.extend(flat(item))
         elif isinstance(item, dict):
             ele.attrib.update(item)
         elif isinstance(item, str):
@@ -103,21 +101,6 @@ def make_element(tag, *items) -> Element:
             else:
                 last_ele.tail = item
     return ele
-
-
-def add(root: Element, child: Element):
-    if child is not None:
-        root.append(child)
-
-
-def flat(nest_list):
-    ret = []
-    for item in nest_list:
-        if isinstance(item, tuple) or isinstance(item, list):
-            ret.extend(flat(item))
-        else:
-            ret.append(item)
-    return ret
 
 
 E = make_element
