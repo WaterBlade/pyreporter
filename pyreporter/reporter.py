@@ -1,13 +1,76 @@
 from PIL import Image
 from io import BytesIO
 from .docx import DocX
+from .calc import Expression, Unit
+import weakref
+from typing import Union
 
 
-class Reporter:
+def index_gen(*, start):
+    index = start
+    while True:
+        yield index
+        index += 1
+
+
+def make_title(*, type_, title):
+    mark = Bookmark(type_)
+    reference = mark.reference
+    if isinstance(title, str):
+        title = Paragraph(mark, title)
+    elif isinstance(title, list):
+        title = Paragraph(mark, *title)
+    title.prop.set_jc('center')
+    return title, reference
+
+
+class ReportElement:
+    def set_root(self, root):
+        self.root = weakref.proxy(root)
+
+    def get_root(self):
+        return self.root.get_root()
+
+    def build_when_add_to_report(self):
+        pass
+
+
+class ReportComposite(ReportElement):
+    def __init__(self, *datas):
+        self.datas = list(datas)
+
+    def add(self, data):
+        self.datas.append(data)
+
+    def build_when_add_to_report(self):
+        for data in self.datas:
+            data.build_when_add_to_report()
+
+    def write_to(self, writer):
+        writer.write_composite(self.datas)
+
+
+class Report:
     def __init__(self):
+        self.cover = None
+        self.catalog = None
+
+        self.heading_list = list()
         self.data_list = list()
 
-    def add(self, item):
+        self.index_generator = index_gen(start=1)
+
+        self.catalog_level = 3
+
+    def set_default_cover(self):
+        self.set_cover(make_default_cover())
+
+    def set_cover(self, cover):
+        self.cover = cover
+        self.catalog = Catalog()
+        self.catalog.set_root(self)
+
+    def add(self, item: Union[ReportElement, str, int, float]):
         if isinstance(item, Run):
             item = Paragraph(item)
         elif isinstance(item, Math):
@@ -20,22 +83,135 @@ class Reporter:
             item = Paragraph(Run(f'{item}'))
 
         self.data_list.append(item)
+        item.set_root(self)
+        item.build_when_add_to_report()
+
+    def add_heading(self, head, level):
+        self.add(Heading(head, level))
+
+    def add_paragraph(self, *data):
+        self.add(Paragraph(*data))
+
+    def add_table(self, title, data_by_rows, cols=None):
+        t = Table(data_by_rows, title=title)  # type: Table
+        t.prop.set_border(top=True, bottom=True, left=True, right=True,
+                          inside_h=True, inside_v=True)
+        if cols:
+            t.prop.set_grid_col(cols)
+        self.add(t)
+
+    def add_figure(self, title, figure, height=None, width=None):
+        fig = StandaloneFigure(figure, height=height, width=width, title=title)
+        self.add(fig)
+
+    def get_root(self):
+        return self
 
     def write_to(self, writer):
+        self.catalog.add_heading(self.heading_list)
+        if self.cover is not None:
+            self.data_list = [self.cover, self.catalog] + self.data_list
         writer.write_docx(self)
 
 
-class Paragraph:
+class PageBreak(ReportComposite):
+    def write_to(self, writer):
+        writer.write_page_break()
+
+
+class Catalog(ReportElement):
+    def __init__(self):
+        self.heads = list()
+
+    def is_empty(self):
+        return len(self.heads) == 0
+
+    def add_heading(self, heads):
+
+        code = [0]
+        level = 1
+
+        for h in heads:
+            if h.level == level:
+                code[-1] += 1
+            elif h.level == level + 1:
+                code.append(1)
+                level += 1
+            elif h.level < level:
+                while h.level < level:
+                    code.pop()
+                    level -= 1
+            else:
+                raise RuntimeError
+            self.heads.append(_CatalogHeading(h.head,
+                                              h.level,
+                                              '.'.join(str(c) for c in code),
+                                              h.mark.mark_id))
+
+    def write_to(self, writer: DocX):
+        catalog_level = self.get_root().catalog_level
+        writer.write_catalog(heads=self.heads, catalog_level=catalog_level)
+
+
+class _CatalogHeading:
+    def __init__(self, head, level, serial_code, mark_id):
+        self.head = head
+        self.level = level
+        self.serial_code = serial_code
+        self.mark_id = mark_id
+
+
+class Heading(ReportElement):
+    def __init__(self, head: str, level=1):
+        self.head = head
+        self.level = level
+
+        self.mark = None
+        self.para = None
+        self.need_page_break = False
+
+    def build_when_add_to_report(self):
+        root = self.get_root()
+        if self.level == 1 and len(root.heading_list) > 0:
+            self.need_page_break = True
+        if self.level <= root.catalog_level:
+            self.mark = HeadingMark(self.head)
+            self.para = Paragraph(self.mark)
+        else:
+            self.para = Paragraph(self.head)
+
+        self.para.set_root(self)
+        self.para.build_when_add_to_report()
+
+        root.heading_list.append(self)
+
+    def write_to(self, writer: DocX):
+        writer.write_heading(para=self.para,
+                             level=self.level,
+                             need_page_break=self.need_page_break)
+
+
+class Paragraph(ReportElement):
     def __init__(self, *datas, style=None):
         self.datas = list()
+        self.add(*datas)
+        self.prop = _ParaProp(style)
+
+        self.root = None
+
+    def build_when_add_to_report(self):
+        for data in self.datas:
+            data.build_when_add_to_report()
+
+    def add(self, *datas):
         for data in datas:
             if isinstance(data, str):
-                self.datas.append(Run(data))
+                data = Run(data)
             elif isinstance(data, int) or isinstance(data, float):
-                self.datas.append(Run(f'{data}'))
-            else:
-                self.datas.append(data)
-        self.prop = _ParaProp(style)
+                data = Run(f'{data}')
+
+            self.datas.append(data)
+            data.set_root(self)
 
     def write_to(self, writer: DocX):
         writer.write_paragraph(*self.datas,
@@ -92,7 +268,7 @@ class _ParaSpacing:
         writer.write_para_prop_spacing(self.before, self.after)
 
 
-class Run:
+class Run(ReportElement):
     def __init__(self, text, size=None, font=None, italic=False, bold=False):
         self.text = text
         self.size = size
@@ -108,22 +284,23 @@ class Run:
                          bold=self.bold)
 
 
-class Table:
+class Table(ReportElement):
     def __init__(self, data_by_rows=None, *,
-                 jc='center', style='a1', title=None):
+                 jc='center', style=None, title=None):
         self.data_by_rows = self._process_data(data_by_rows)
         self.prop = _TableProp(jc=jc, style=style)
 
-        if title is not None:
-            mark = Bookmark('表')
-            self.reference = mark.reference
-            if isinstance(title, str):
-                self.title = Paragraph(mark, title)
-            elif isinstance(title, list):
-                self.title = Paragraph(mark, *title)
-            self.title.prop.set_jc('center')
-        else:
-            self.title = None
+        self.title = None
+        self.reference = None
+
+        self.set_title(title)
+
+    def build_when_add_to_report(self):
+        for row in self.data_by_rows:
+            for col in row:
+                col.build_when_add_to_report()
+        if self.title is not None:
+            self.title.build_when_add_to_report()
 
     @staticmethod
     def _process_data(data_by_rows):
@@ -137,6 +314,15 @@ class Table:
                     r.append(Cell(col))
             ret.append(r)
         return ret
+
+    def set_title(self, title):
+        if title is not None:
+            title, reference = make_title(type_='表', title=title)
+            self.reference = reference
+            title.set_root(self)
+        else:
+            self.reference = None
+        self.title = title
 
     def write_to(self, writer: DocX):
         writer.write_table(data_by_rows=self.data_by_rows,
@@ -228,7 +414,7 @@ class _TableCellMargin:
         writer.write_table_prop_cell_margin(self.top, self.bottom, self.left, self.right)
 
 
-class Cell:
+class Cell(ReportElement):
     def __init__(self, item, h_align='center', v_align='center'):
         if isinstance(item, Paragraph):
             self.para = item
@@ -238,6 +424,9 @@ class Cell:
             self.para = Paragraph(item)
 
         self.prop = _CellProp(h_align=h_align, v_align=v_align)
+
+    def build_when_add_to_report(self):
+        self.para.build_when_add_to_report()
 
     def write_to(self, writer: DocX):
         writer.write_cell(para=self.para,
@@ -277,7 +466,7 @@ class _CellBorder:
         writer.write_cell_prop_border(self.top, self.bottom, self.left, self.right, self.size)
 
 
-class Footnote:
+class Footnote(ReportElement):
     def __init__(self, *datas):
         self.datas = list()
         for data in datas:
@@ -292,75 +481,114 @@ class Footnote:
         writer.write_footnote(self.datas)
 
 
-class Bookmark:
-    id_ = 1
-
+class Bookmark(ReportElement):
     def __init__(self, type_):
         self.type_ = type_
-        self.mark_id = self.id_
-        self.id_ += 1
-        self.reference = Reference(self.mark_id)
+        self.mark_id = 0
+        self.reference = Reference(self)
+
+    def build_when_add_to_report(self):
+        self.mark_id = next(self.get_root().index_generator)
 
     def write_to(self, writer: DocX):
         writer.write_bookmark(type_=self.type_,
                               mark_id=self.mark_id)
 
 
-class Reference:
-    def __init__(self, mark_id):
-        self.mark_id = mark_id
+class HeadingMark(ReportElement):
+    def __init__(self, head: str):
+        self.head = head
+        self.mark_id = 0
+
+    def build_when_add_to_report(self):
+        self.mark_id = next(self.get_root().index_generator)
 
     def write_to(self, writer: DocX):
-        writer.write_reference(mark_id=self.mark_id)
+        writer.write_heading_mark(head=self.head,
+                                  mark_id=self.mark_id)
 
 
-class Figure:
-    def __init__(self, file, scale=1):
+class Reference(ReportElement):
+    def __init__(self, mark):
+        self.mark = mark
+
+    def write_to(self, writer: DocX):
+        writer.write_reference(mark_id=self.mark.mark_id)
+
+
+class Figure(ReportElement):
+    def __init__(self, file, height=None, width=None):
+        # height and width assume to be mm
         image = Image.open(file)
 
         size = image.size
         dpi = image.info['dpi']
 
         self.inch_size = [s / d for s, d in zip(size, dpi)]
-        self.format = 'jpeg'
+        self.format = 'png'
 
         b = BytesIO()
         image.save(b, self.format)
         self.data = b.getvalue()
 
-        self.scale = scale
+        self.height = height / 25.4 if height else height
+        self.width = width / 25.4 if width else width
+
+    def get_inch_size(self):
+        x, y = self.inch_size
+        if self.height is not None and self.width is None:
+            x = x / y * self.height
+            y = self.height
+        elif self.height is None and self.width is not None:
+            y = y / x * self.width
+            x = self.width
+        elif self.height is not None and self.width is not None:
+            x, y = self.width, self.height
+        return x, y
 
 
 class InlineFigure(Figure):
     def write_to(self, writer: DocX):
-        x, y = self.inch_size
+        x, y = self.get_inch_size()
+
         writer.write_inline_figure(data=self.data, fmt=self.format,
-                                   cx=x * self.scale, cy=y * self.scale)
+                                   cx=x, cy=y)
 
 
 class StandaloneFigure(Figure):
-    def __init__(self, file, scale=1, title=None):
-        super().__init__(file=file, scale=scale)
+    def __init__(self, file, width=None, height=None, title=None):
+        super().__init__(file=file, height=height, width=width)
 
+        self.title = None
+        self.reference = None
+
+        self.set_title(title)
+
+    def set_title(self, title):
         if title is not None:
-            mark = Bookmark('图')
-            self.reference = mark.reference
-            if isinstance(title, str):
-                self.title = Paragraph(mark, title)
-            elif isinstance(title, list):
-                self.title = Paragraph(mark, *title)
-            self.title.prop.set_jc('center')
+            title, reference = make_title(type_='图', title=title)
+            self.reference = reference
         else:
-            self.title = None
+            self.reference = None
+        self.title = title
 
     def write_to(self, writer: DocX):
-        x, y = self.inch_size
+        x, y = self.get_inch_size()
+
         writer.write_standalone_figure(title=self.title,
                                        data=self.data, fmt=self.format,
-                                       cx=x * self.scale, cy=y * self.scale)
+                                       cx=x, cy=y)
 
 
-class MathPara:
+class FloatFigure(Figure):
+    def write_to(self, writer: DocX):
+        x, y = self.get_inch_size()
+
+        writer.write_float_figure(data=self.data, fmt=self.format,
+                                  cx=x, cy=y)
+
+
+class MathPara(ReportElement):
     def __init__(self, *datas):
         self.datas = datas
 
@@ -368,7 +596,7 @@ class MathPara:
         writer.write_mathpara(self.datas)
 
 
-class Math:
+class Math(ReportElement):
     def __init__(self, *datas):
         self.datas = datas
 
@@ -376,34 +604,41 @@ class Math:
         writer.write_math(self.datas)
 
 
+class MathRun(ReportElement):
+    def __init__(self, data, sty=None):
+        self.data = f'{data}'
+        self.sty = sty
+
+    def write_to(self, writer: DocX):
+        writer.write_math_run(self.data, self.sty)
+
+
 P = Paragraph
 MP = MathPara
 
 
-# Inner class
-
-
-def add_default_cover(doc: Reporter, project='**工程', name='**计算书',
-                      part='**专业', phase='**阶段',
-                      number='', secret='',
-                      footer_str='湖南省水利水电勘测设计研究总院'):
+def make_default_cover(project='**工程', name='**计算书',
+                       part='**专业', phase='**阶段',
+                       number='', secret='',
+                       footer_str='湖南省水利水电勘测设计研究总院'):
+    comp = ReportComposite()
     lt = Table([['编号', number]])
     lt.prop.set_grid_col([500, 2000])
     lt.prop.set_cell_margin()
     lt.prop.set_pos_pr(x_spec='left', y_spec='top')
     lt.prop.set_border(top=True, bottom=True, left=True, right=True, inside_v=True)
-    doc.add(lt)
+    comp.add(lt)
 
     rt = Table([['秘密', secret]])
     rt.prop.set_grid_col([500, 2000])
     rt.prop.set_cell_margin()
     rt.prop.set_pos_pr(x_spec='right', y_spec='top')
     rt.prop.set_border(top=True, bottom=True, left=True, right=True, inside_v=True)
-    doc.add(rt)
+    comp.add(rt)
 
     title = Table([[Run('计  算  书', size=72)]])
     title.prop.set_pos_pr(y=3000, x_spec='center')
-    doc.add(title)
+    comp.add(title)
 
     cells = dict()
     for txt in [project, part, phase, name, '工程名称', '专业名称', '设计阶段', '计算书名称']:
@@ -426,7 +661,7 @@ def add_default_cover(doc: Reporter, project='**工程', name='**计算书',
     sub.prop.set_grid_col([1600, 5000])
     sub.prop.set_cell_margin(right=10)
     sub.prop.set_pos_pr(x_spec='center', y=6000)
-    doc.add(sub)
+    comp.add(sub)
 
     cells = dict()
     for txt in ['审查', '校核', '计算', '年', '月', '日']:
@@ -449,8 +684,12 @@ def add_default_cover(doc: Reporter, project='**工程', name='**计算书',
     sig.prop.set_grid_col([700, 1500, 300, 900, 300, 600, 300, 600, 300])
     sig.prop.set_cell_margin()
     sig.prop.set_pos_pr(x_spec='center', y=10500)
-    doc.add(sig)
+    comp.add(sig)
 
     footer = Table([[Run(footer_str, size=24)]])
     footer.prop.set_pos_pr(x_spec='center', y=13500)
-    doc.add(footer)
+    comp.add(footer)
+
+    comp.add(PageBreak())
+
+    return comp
