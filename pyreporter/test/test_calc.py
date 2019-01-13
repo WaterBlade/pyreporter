@@ -1,7 +1,7 @@
-from ..calc import Variable, Constant, Unit
+from ..expression import Variable, Number, Unit
 
 V = Variable
-C = Constant
+C = Number
 
 
 def test_add():

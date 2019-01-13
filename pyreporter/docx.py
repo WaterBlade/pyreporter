@@ -810,7 +810,7 @@ class DocX:
             item.write_to(self)
         tree.end('m:oMath')
 
-    def write_mul_equation(self, exps):
+    def write_math_multi_line(self, exps):
         tree = self.document_tree
         tree.start('m:eqArr')
 
@@ -905,6 +905,36 @@ class DocX:
         self._write_named_element('m:e', exp)
 
         tree.end('m:rad')
+
+    def write_lesser_than(self, left, right):
+        left.write_to(self)
+        self.write_math_run('<', sty='p')
+        right.write_to(self)
+
+    def write_lesser_or_equal(self, left, right):
+        left.write_to(self)
+        self.write_math_run('≤', sty='p')
+        right.write_to(self)
+
+    def write_equal(self, left, right):
+        left.write_to(self)
+        self.write_math_run('=', sty='p')
+        right.write_to(self)
+
+    def write_not_equal(self, left, right):
+        left.write_to(self)
+        self.write_math_run('≠', sty='p')
+        right.write_to(self)
+
+    def write_greater_than(self, left, right):
+        left.write_to(self)
+        self.write_math_run('>', sty='p')
+        right.write_to(self)
+
+    def write_greater_or_equal(self, left, right):
+        left.write_to(self)
+        self.write_math_run('≥', sty='p')
+        right.write_to(self)
 
     def _write_m_sSup(self, base, sup):
         tree = self.document_tree
@@ -1008,8 +1038,10 @@ class DocX:
         tree.start('m:d')
 
         tree.start('m:dPr')
-        tree.add(E('m:begChr', {'m:val': left}))
-        tree.add(E('m:endChr', {'m:val': right}))
+        if left is not None:
+            tree.add(E('m:begChr', {'m:val': left}))
+        if right is not None:
+            tree.add(E('m:endChr', {'m:val': right}))
         self._write_m_ctrlPr()
         tree.end('m:dPr')
 
@@ -1026,6 +1058,9 @@ class DocX:
 
     def write_brace(self, exp):
         self._write_m_delimeter(exp, left='{', right='}')
+
+    def write_multi_line_brace(self, exp):
+        self._write_m_delimeter(exp, left='{', right=None)
 
 
 

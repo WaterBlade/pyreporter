@@ -1,4 +1,5 @@
 import math
+from typing import List
 
 
 def wrapper_number(number):
@@ -6,9 +7,9 @@ def wrapper_number(number):
         i = 0
         while number < 10*i:
             i -= 1
-        return Constant(number, precision=abs(i)+3)
+        return Number(number, precision=abs(i) + 3)
     elif isinstance(number, int):
-        return Constant(number, precision=0)
+        return Number(number, precision=0)
     else:
         return number
 
@@ -31,6 +32,14 @@ class Expression:
 
     def write_to(self, doc):
         pass
+
+    def get_variable_set(self):
+        s = set()
+        if self.left is not None:
+            s.union(self.left.get_variable_set())
+        if self.right is not None:
+            s.union(self.right.get_variable_set())
+        return s
 
     def __add__(self, other):
         return Add(self, other)
@@ -61,6 +70,24 @@ class Expression:
 
     def __rpow__(self, other):
         return Pow(other, self)
+
+    def __lt__(self, other):
+        return LesserThan(self, other)
+
+    def __le__(self, other):
+        return LesserOrEqual(self, other)
+
+    def __eq__(self, other):
+        return Equal(self, other)
+
+    def __ne__(self, other):
+        return NotEqual(self, other)
+
+    def __gt__(self, other):
+        return GreaterThan(self, other)
+
+    def __ge__(self, other):
+        return GreaterOrEqual(self, other)
 
 
 class Add(Expression):
@@ -114,6 +141,54 @@ class Radical(Expression):
 
     def write_to(self, doc):
         doc.write_radical(self.left, self.right)
+
+
+class LesserThan(Expression):
+    def calc(self):
+        return self.left.calc() < self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_lesser_than(self.left, self.right)
+
+
+class LesserOrEqual(Expression):
+    def calc(self):
+        return self.left.calc() <= self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_lesser_or_equal(self.left, self.right)
+
+
+class Equal(Expression):
+    def calc(self):
+        return self.left.calc() == self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_equal(self.left, self.right)
+
+
+class NotEqual(Expression):
+    def calc(self):
+        return self.left.calc() != self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_not_equal(self.left, self.right)
+
+
+class GreaterThan(Expression):
+    def calc(self):
+        return self.left.calc() > self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_greater_than(self.left, self.right)
+
+
+class GreaterOrEqual(Expression):
+    def calc(self):
+        return self.left.calc() >= self.right.calc()
+
+    def write_to(self, doc):
+        doc.write_greater_or_equal(self.left, self.right)
 
 
 class ToDegree(Expression):
@@ -232,11 +307,14 @@ class Variable(Expression):
         self.precision = precision
         self.unit = unit
 
+    def get_variable_set(self):
+        return {self}
+
     def copy(self):
         return Variable(self.symbol, self.subscript, self.precision, self.unit)
 
     def copy_result(self):
-        return Constant(self.value, self.precision)
+        return Number(self.value, self.precision)
 
     def calc(self):
         if self.value is None:
@@ -248,13 +326,21 @@ class Variable(Expression):
         if self.subscript is None:
             doc.write_variable(self.symbol)
         else:
-            doc.write_subscript_variable(V(self.symbol), V(self.subscript))
+            doc.write_subscript_variable(Variable(self.symbol), Variable(self.subscript))
 
 
 class Constant(Variable):
+    def __init__(self, symbol, subscript=None, value=0, precision=2):
+        super().__init__(symbol, subscript, value, precision)
+
+
+class Number(Variable):
     def __init__(self, value, precision=2):
         p_format = f'%.{precision}f'
         super().__init__(p_format % value, value=value, precision=precision)
+
+    def get_variable_set(self):
+        return set()
 
 
 class Unit(Variable):
@@ -266,3 +352,6 @@ class Unit(Variable):
 
 
 V = Variable
+
+
+

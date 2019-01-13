@@ -1,6 +1,6 @@
 from pyreporter.docx import DocX
 from pyreporter.reporter import (Report, ReportComposite, MathComposite)
-from pyreporter.calc import V, Radical
+from pyreporter.expression import V, Radical
 
 
 MC = MathComposite

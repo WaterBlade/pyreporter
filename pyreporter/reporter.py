@@ -1,7 +1,7 @@
 from PIL import Image
 from io import BytesIO
 from .docx import DocX
-from .calc import Expression, Variable
+from .expression import Expression, Variable
 import weakref
 from typing import Union
 
@@ -106,13 +106,22 @@ class Report:
         self.add(fig)
         return fig.reference
 
+    def add_math_definition(self):
+        pass
+
+    def add_math_procedure(self):
+        pass
+
+    def add_math_symbol_note(self):
+        pass
+
     def add_named_math(self, *math_eles):
-        m = NamedMath(MathPara(Math(*math_eles)))
+        m = ReferencedMathPara(Math(*math_eles))
         self.add(m)
         return m.reference
 
     def add_mul_named_math(self, *math_eles_list):
-        m = NamedMath(MathPara(Math(MultiMath(math_eles_list))))
+        m = ReferencedMathPara(Math(MathMultiLine(math_eles_list)))
         self.add(m)
         return m.reference
 
@@ -120,7 +129,7 @@ class Report:
         self.add(MathPara(Math(*math_eles)))
 
     def add_mul_unnamed_math(self, *math_eles_list):
-        self.add(MathPara(Math(MultiMath(math_eles_list))))
+        self.add(Math(MathMultiLine(math_eles_list)))
 
     def get_root(self):
         return self
@@ -625,11 +634,19 @@ class MathComposite(ReportElement):
         writer.write_math_composite(self.datas)
 
 
-class NamedMath(ReportElement):
-    def __init__(self, math_para):
+class MathPara(ReportElement):
+    def __init__(self, math_obj):
+        self.math = math_obj
+
+    def write_to(self, writer):
+        writer.write_mathpara(self.math)
+
+
+class ReferencedMathPara(ReportElement):
+    def __init__(self, math_obj):
         mark = Bookmark('式')
         self.reference = mark.reference
-        c_math = Cell(math_para)
+        c_math = Cell(MathPara(math_obj))
         c_mark = Cell(mark)
 
         table = Table([[c_math, c_mark]])
@@ -646,14 +663,6 @@ class NamedMath(ReportElement):
         self.table.write_to(writer)
 
 
-class MathPara(ReportElement):
-    def __init__(self, math_obj):
-        self.math = math_obj
-
-    def write_to(self, writer):
-        writer.write_mathpara(self.math)
-
-
 class Math(ReportElement):
     def __init__(self, *eles):
         self.datas = list()
@@ -662,8 +671,6 @@ class Math(ReportElement):
                 self.datas.append(ele)
             elif isinstance(ele, str):
                 self.datas.append(MathRun(ele))
-            elif isinstance(ele, MultiMath):
-                self.datas.append(ele)
             else:
                 raise TypeError('Unknown math type')
 
@@ -671,14 +678,22 @@ class Math(ReportElement):
         writer.write_math(self.datas)
 
 
-class MultiMath(ReportElement):
+class MathMultiLine(ReportElement):
     def __init__(self, eqs):
         self.elements = list()
         for eq in eqs:
             self.elements.append(eq)
 
     def write_to(self, writer):
-        writer.write_mul_equation(self.elements)
+        writer.write_math_multi_line(self.elements)
+
+
+class MathMultiLineBrace(ReportElement):
+    def __init__(self, exp):
+        self.exp = exp
+
+    def write_to(self, writer: DocX):
+        writer.write_multi_line_brace(self.exp)
 
 
 class MathRun(ReportElement):
