@@ -1,6 +1,7 @@
 from .expression import Expression, Variable
 from typing import List
-from .reporter import MathRun, MathComposite, MathMultiLine, MathMultiLineBrace
+from .reporter import (MathRun, MathComposite, MathMultiLine, MathMultiLineBrace,
+                       SymbolNote)
 
 
 class FormulaBase:
@@ -33,12 +34,14 @@ class Formula(FormulaBase):
         result = self.expression.copy_result()
         if self.variable.unit is not None:
             return MathComposite(self.variable,
-                                 MathRun('&=', sty='p'), result,
+                                 MathRun('&=', sty='p'), self.expression,
+                                 MathRun('=', sty='p'), result,
                                  MathRun('=', sty='p'), self.variable.copy_result(),
                                  self.variable.unit)
         else:
             return MathComposite(self.variable,
-                                 MathRun('&=', sty='p'), result,
+                                 MathRun('&=', sty='p'), self.expression,
+                                 MathRun('=', sty='p'), result,
                                  MathRun('=', sty='p'), self.variable.copy_result())
 
 
@@ -63,8 +66,8 @@ class PiecewiseFormula(FormulaBase):
     def get_variable_set(self):
         s = {self.variable}
         for exp, cond in zip(self.expression_list, self.condition_list):
-            s.union(exp.get_variable_set())
-            s.union(cond.get_variable_set())
+            s = s.union(exp.get_variable_set())
+            s = s.union(cond.get_variable_set())
         return s
 
     def get_definition(self):
@@ -77,6 +80,7 @@ class PiecewiseFormula(FormulaBase):
 
     def get_procedure(self):
         result = self.expression.copy_result()
+        # TODO: Just copy from the formula, need alter
         if self.variable.unit is not None:
             return MathComposite(self.variable,
                                  MathRun('&=', sty='p'), result,
@@ -92,36 +96,84 @@ class FormulaSystem(FormulaBase):
     def __init__(self, *formula):
         self.formula_list = list(formula)  # type: List[Formula]
 
+    def get_target_variable(self):
+        return self.formula_list[0].variable
+
+    def add(self, formula):
+        self.formula_list.append(formula)
+
     def calc(self):
-        length = len(self.formula_list)
-        for i in range(length):
-            self.formula_list[length - i - 1].calc()
+        for formula in self.formula_list[::-1]:
+            formula.calc()
 
         return self.formula_list[0].variable.value
 
     def get_variable_set(self):
         s = set()
         for formula in self.formula_list:
-            s.union(formula.get_variable_set())
+            s = s.union(formula.get_variable_set())
         return s
 
     def get_definition(self):
-        return [formula.get_definition for formula in self.formula_list]
+        return MathMultiLine([formula.get_definition() for formula in self.formula_list])
 
     def get_procedure(self):
-        pass
+        reversed = self.formula_list[::-1]
+        return MathMultiLine([formula.get_procedure() for formula in reversed])
 
 
 class Calculator:
+    def __init__(self):
+        self.formula_system = FormulaSystem()
+
+    def add(self, formula):
+        self.formula_system.add(formula)
+
+    def calc(self):
+        return self.formula_system.calc()
+
     def get_definition(self):
-        pass
+        return self.formula_system.get_definition()
 
     def get_procedure(self):
-        pass
+        return self.formula_system.get_procedure()
 
     def get_symbol_note(self):
-        pass
+        return SymbolNote(self.formula_system.get_variable_set())
 
 
-class BisectSolver:
-    pass
+class TrailSolver(Calculator):
+    def set_unknown(self, unknown_var):
+        self.unknown_variable = unknown_var
+
+    def solve(self, target_value, left=0.001, right=100, tol=1e-5, max_iter=100):
+        target = self.formula_system.get_target_variable()
+        unknown_var = self.unknown_variable
+
+        def eq(x):
+            unknown_var.value = x
+            self.calc()
+            return target_value - target.value
+
+        mid = (left + right) / 2
+        y_mid = eq(mid)
+        y_left = eq(left)
+        y_right = eq(right)
+        while abs(y_mid) > tol:
+            if max_iter <= 0:
+                return None
+
+            if y_left * y_mid > 0:
+                left = mid
+                y_left = eq(left)
+            elif y_right * y_mid > 0:
+                right = mid
+                y_right = eq(right)
+            else:
+                return None
+            mid = (left + right) / 2
+            y_mid = eq(mid)
+
+            max_iter -= 1
+
+        return mid

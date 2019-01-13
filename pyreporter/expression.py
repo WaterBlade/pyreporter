@@ -22,10 +22,12 @@ class Expression:
     def copy(self):
         left = self.left.copy() if self.left is not None else None
         right = self.right.copy() if self.right is not None else None
-        return self.__init__(left, right)
+        return type(self)(left, right)
 
     def copy_result(self):
-        return self.copy()
+        left = self.left.copy_result() if self.left is not None else None
+        right = self.right.copy_result() if self.right is not None else None
+        return type(self)(left, right)
 
     def calc(self):
         pass
@@ -36,9 +38,9 @@ class Expression:
     def get_variable_set(self):
         s = set()
         if self.left is not None:
-            s.union(self.left.get_variable_set())
+            s = s.union(self.left.get_variable_set())
         if self.right is not None:
-            s.union(self.right.get_variable_set())
+            s = s.union(self.right.get_variable_set())
         return s
 
     def __add__(self, other):
@@ -299,13 +301,17 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2, inform=None):
         super().__init__()
         self.symbol = symbol
         self.value = value
         self.subscript = subscript
         self.precision = precision
         self.unit = unit
+        self.inform = inform
+
+    def __hash__(self):
+        return hash(self.symbol)
 
     def get_variable_set(self):
         return {self}
@@ -335,9 +341,13 @@ class Constant(Variable):
 
 
 class Number(Variable):
-    def __init__(self, value, precision=2):
-        p_format = f'%.{precision}f'
-        super().__init__(p_format % value, value=value, precision=precision)
+    def __init__(self, value, precision=0):
+        if precision == 0:
+            data = '%d' % value
+        else:
+            fmt = f'%.{precision}f'
+            data = fmt % value
+        super().__init__(data, value=value, precision=precision)
 
     def get_variable_set(self):
         return set()

@@ -133,6 +133,9 @@ class DocX:
         self.foot_id_gen = SequenceGenerator('', 2)
         self.mark_id_gen = SequenceGenerator('', 1)
 
+    def set_path(self, path):
+        self.path = path
+
     def _add_xml(self, path: str, xml: str, with_head=True):
         if with_head:
             xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml
@@ -329,7 +332,7 @@ class DocX:
             for fig in self.figure_list:
                 z.writestr(fig.path, data=fig.figure)
 
-    def write_docx(self, doc):
+    def write_reporter(self, doc):
         self.build_tree()
         for data in doc.data_list:
             data.write_to(self)
@@ -836,6 +839,28 @@ class DocX:
 
         tree.add(E('m:t', run))
         tree.end('m:r')
+
+    def write_symbol_note(self, symbol_set):
+        tree = self.document_tree
+        for symbol in symbol_set:
+            tree.start('w:p')
+
+            tree.add(E('w:pPr',
+                       E('w:tabs',
+                         E('w:tab', {'w:val': 'right', 'w:pos': '500'}),
+                         E('w:tab', {'w:val': 'center', 'w:pos':'600'}),
+                         E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
+            tree.add(E('w:r', E('w:tab')))
+            self.write_math([symbol])
+            tree.add(E('w:r', E('w:tab')))
+            self.write_run('―')
+            tree.add(E('w:r', E('w:tab')))
+            self.write_run(symbol.inform)
+            if symbol.unit is not None:
+                self.write_run('，单位：')
+                self.write_math([symbol.unit])
+
+            tree.end('w:p')
 
     def _write_m_ctrlPr(self, italic=False):
         tree = self.document_tree

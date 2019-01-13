@@ -64,6 +64,15 @@ class Report:
 
         self.catalog_level = 3
 
+        self.writer = DocX()
+
+    def set_writer(self, writer):
+        self.writer = writer
+
+    def save(self, path):
+        self.writer.set_path(path)
+        self.write_to(self.writer)
+
     def set_default_cover(self):
         self.set_cover(make_default_cover())
 
@@ -106,14 +115,16 @@ class Report:
         self.add(fig)
         return fig.reference
 
-    def add_math_definition(self):
-        pass
+    def add_math_definition(self, definition):
+        m = ReferencedMathPara(Math(definition))
+        self.add(m)
+        return m.reference
 
-    def add_math_procedure(self):
-        pass
+    def add_math_procedure(self, procedure):
+        self.add(Paragraph(MathPara(Math(procedure))))
 
-    def add_math_symbol_note(self):
-        pass
+    def add_symbol_note(self, symbol_note):
+        self.add(symbol_note)
 
     def add_named_math(self, *math_eles):
         m = ReferencedMathPara(Math(*math_eles))
@@ -138,7 +149,7 @@ class Report:
         self.catalog.add_heading(self.heading_list)
         if self.cover is not None:
             self.data_list = [self.cover, self.catalog] + self.data_list
-        writer.write_docx(self)
+        writer.write_reporter(self)
 
 
 class PageBreak(ReportComposite):
@@ -667,7 +678,7 @@ class Math(ReportElement):
     def __init__(self, *eles):
         self.datas = list()
         for ele in eles:
-            if isinstance(ele, MathRun) or isinstance(ele, Expression):
+            if isinstance(ele, MathMultiLine) or isinstance(ele, MathComposite) or isinstance(ele, MathRun) or isinstance(ele, Expression):
                 self.datas.append(ele)
             elif isinstance(ele, str):
                 self.datas.append(MathRun(ele))
@@ -705,41 +716,12 @@ class MathRun(ReportElement):
         writer.write_math_run(self.data, self.sty)
 
 
-class Formula:
-    def __init__(self, var, expression):
-        self.variable = var  # type: Variable
-        self.expression = expression  # type: Expression
+class SymbolNote(ReportElement):
+    def __init__(self, symbol_set):
+        self.symbol_set = symbol_set
 
-    def calc(self):
-        self.variable.value = self.expression.calc()
-        return self.variable.value
-
-    def get_definition(self):
-        return MathComposite(self.variable, MathRun('&=', sty='p'), self.expression)
-
-    def get_procedure(self):
-        result = self.expression.copy_result()
-        if self.variable.unit is not None:
-            return MathComposite(self.variable,
-                                 MathRun('&=', sty='p'), result,
-                                 MathRun('=', sty='p'), self.variable.copy_result(),
-                                 self.variable.unit)
-        else:
-            return MathComposite(self.variable,
-                                 MathRun('&=', sty='p'), result,
-                                 MathRun('=', sty='p'), self.variable.copy_result())
-
-
-class Equation:
-    def __init__(self, left_exp, right_exp):
-        self.left = left_exp
-        self.right = right_exp
-
-    def calc(self):
-        return self.left.calc() - self.right.calc()
-
-    def get_definition(self):
-        return MathComposite(self.left, MathRun('&=', sty='p'), self.right)
+    def write_to(self, writer: DocX):
+        writer.write_symbol_note(self.symbol_set)
 
 
 P = Paragraph
