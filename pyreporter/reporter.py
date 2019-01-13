@@ -1,7 +1,7 @@
 from PIL import Image
 from io import BytesIO
 from .docx import DocX
-from .calc import Expression, Unit
+from .calc import Expression, Variable
 import weakref
 from typing import Union
 
@@ -16,10 +16,7 @@ def index_gen(*, start):
 def make_title(*, type_, title):
     mark = Bookmark(type_)
     reference = mark.reference
-    if isinstance(title, str):
-        title = Paragraph(mark, title)
-    elif isinstance(title, list):
-        title = Paragraph(mark, *title)
+    title = Paragraph(mark, title)
     title.prop.set_jc('center')
     return title, reference
 
@@ -37,9 +34,14 @@ class ReportElement:
 
 class ReportComposite(ReportElement):
     def __init__(self, *datas):
-        self.datas = list(datas)
+        self.datas = list()
+        for d in datas:
+            self.add(d)
 
     def add(self, data):
+        if isinstance(data, str):
+            data = Run(data)
+        data.set_root(self)
         self.datas.append(data)
 
     def build_when_add_to_report(self):
@@ -70,7 +72,7 @@ class Report:
         self.catalog = Catalog()
         self.catalog.set_root(self)
 
-    def add(self, item: Union[ReportElement, str, int, float]):
+    def add(self, item: Union[ReportElement, str]):
         if isinstance(item, Run):
             item = Paragraph(item)
         elif isinstance(item, Math):
@@ -79,8 +81,6 @@ class Report:
             item = Paragraph(item)
         elif isinstance(item, str):
             item = Paragraph(Run(item))
-        elif isinstance(item, int) or isinstance(item, float):
-            item = Paragraph(Run(f'{item}'))
 
         self.data_list.append(item)
         item.set_root(self)
@@ -99,10 +99,28 @@ class Report:
         if cols:
             t.prop.set_grid_col(cols)
         self.add(t)
+        return t.reference
 
     def add_figure(self, title, figure, height=None, width=None):
         fig = StandaloneFigure(figure, height=height, width=width, title=title)
         self.add(fig)
+        return fig.reference
+
+    def add_named_math(self, *math_eles):
+        m = NamedMath(MathPara(Math(*math_eles)))
+        self.add(m)
+        return m.reference
+
+    def add_mul_named_math(self, *math_eles_list):
+        m = NamedMath(MathPara(Math(MultiMath(math_eles_list))))
+        self.add(m)
+        return m.reference
+
+    def add_unnamed_math(self, *math_eles):
+        self.add(MathPara(Math(*math_eles)))
+
+    def add_mul_unnamed_math(self, *math_eles_list):
+        self.add(MathPara(Math(MultiMath(math_eles_list))))
 
     def get_root(self):
         return self
@@ -341,6 +359,9 @@ class _TableProp:
         self.grid_col = None
         self.cell_margin = None
 
+    def set_jc(self, jc):
+        self.jc = jc
+
     def set_pos_pr(self, x=None, y=None, x_spec=None, y_spec=None):
         self.pos_pr = _TablePosPr(x, y, x_spec, y_spec)
         self.jc = None
@@ -568,6 +589,7 @@ class StandaloneFigure(Figure):
         if title is not None:
             title, reference = make_title(type_='图', title=title)
             self.reference = reference
+            title.set_root(self)
         else:
             self.reference = None
         self.title = title
@@ -588,20 +610,75 @@ class FloatFigure(Figure):
                                   cx=x, cy=y)
 
 
-class MathPara(ReportElement):
-    def __init__(self, *datas):
-        self.datas = datas
+class MathComposite(ReportElement):
+    def __init__(self, *items):
+        self.datas = list()
+        for item in items:
+            self.add(item)
+
+    def add(self, item):
+        if isinstance(item, str):
+            item = MathRun(item)
+        self.datas.append(item)
 
     def write_to(self, writer):
-        writer.write_mathpara(self.datas)
+        writer.write_math_composite(self.datas)
+
+
+class NamedMath(ReportElement):
+    def __init__(self, math_para):
+        mark = Bookmark('式')
+        self.reference = mark.reference
+        c_math = Cell(math_para)
+        c_mark = Cell(mark)
+
+        table = Table([[c_math, c_mark]])
+        table.set_root(self)
+
+        table.prop.set_jc('center')
+        table.prop.set_grid_col([8000, 1000])
+        c_math.prop.set_align(h_align='center', v_align='center')
+        c_mark.prop.set_align(h_align='center', v_align='center')
+
+        self.table = table
+
+    def write_to(self, writer):
+        self.table.write_to(writer)
+
+
+class MathPara(ReportElement):
+    def __init__(self, math_obj):
+        self.math = math_obj
+
+    def write_to(self, writer):
+        writer.write_mathpara(self.math)
 
 
 class Math(ReportElement):
-    def __init__(self, *datas):
-        self.datas = datas
+    def __init__(self, *eles):
+        self.datas = list()
+        for ele in eles:
+            if isinstance(ele, MathRun) or isinstance(ele, Expression):
+                self.datas.append(ele)
+            elif isinstance(ele, str):
+                self.datas.append(MathRun(ele))
+            elif isinstance(ele, MultiMath):
+                self.datas.append(ele)
+            else:
+                raise TypeError('Unknown math type')
 
     def write_to(self, writer):
         writer.write_math(self.datas)
+
+
+class MultiMath(ReportElement):
+    def __init__(self, eqs):
+        self.elements = list()
+        for eq in eqs:
+            self.elements.append(eq)
+
+    def write_to(self, writer):
+        writer.write_mul_equation(self.elements)
 
 
 class MathRun(ReportElement):
@@ -611,6 +688,43 @@ class MathRun(ReportElement):
 
     def write_to(self, writer: DocX):
         writer.write_math_run(self.data, self.sty)
+
+
+class Formula:
+    def __init__(self, var, expression):
+        self.variable = var  # type: Variable
+        self.expression = expression  # type: Expression
+
+    def calc(self):
+        self.variable.value = self.expression.calc()
+        return self.variable.value
+
+    def get_definition(self):
+        return MathComposite(self.variable, MathRun('&=', sty='p'), self.expression)
+
+    def get_procedure(self):
+        result = self.expression.copy_result()
+        if self.variable.unit is not None:
+            return MathComposite(self.variable,
+                                 MathRun('&=', sty='p'), result,
+                                 MathRun('=', sty='p'), self.variable.copy_result(),
+                                 self.variable.unit)
+        else:
+            return MathComposite(self.variable,
+                                 MathRun('&=', sty='p'), result,
+                                 MathRun('=', sty='p'), self.variable.copy_result())
+
+
+class Equation:
+    def __init__(self, left_exp, right_exp):
+        self.left = left_exp
+        self.right = right_exp
+
+    def calc(self):
+        return self.left.calc() - self.right.calc()
+
+    def get_definition(self):
+        return MathComposite(self.left, MathRun('&=', sty='p'), self.right)
 
 
 P = Paragraph

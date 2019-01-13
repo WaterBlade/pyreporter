@@ -250,13 +250,6 @@ class Variable(Expression):
         else:
             doc.write_subscript_variable(V(self.symbol), V(self.subscript))
 
-    def assign(self, value, unit=None):
-        if unit is not None:
-            factor = self.unit.convert_factor(unit)
-            self.value = value * factor
-        else:
-            self.value = value
-
 
 class Constant(Variable):
     def __init__(self, value, precision=2):
@@ -264,76 +257,12 @@ class Constant(Variable):
         super().__init__(p_format % value, value=value, precision=precision)
 
 
-class UnitBase:
-    def __init__(self, symbol: Expression=Variable(''), factor=1.0, base=(0, 0, 0)):
-        self.symbol = symbol
-        self.factor = factor
-        self.base = base
+class Unit(Variable):
+    def __init__(self, symbol):
+        super().__init__(symbol)
 
-    def set_symbol(self, symbol):
-        self.symbol = symbol
-        return self
-
-    def scale(self, factor, symbol):
-        return UnitBase(symbol, self.factor*factor, tuple(self.base))
-
-    def __mul__(self, other):
-        base = tuple(i+j for i, j in zip(self.base, other.base))
-        factor = self.factor * other.factor
-        symbol = self.symbol * other.symbol
-        return UnitBase(symbol, factor, base)
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        base = tuple(i-j for i, j in zip(self.base, other.base))
-        factor = self.factor / other.factor
-        symbol = self.symbol / other.symbol
-        return UnitBase(symbol, factor, base)
-
-    def __pow__(self, index):
-        base = tuple(i*index for i in self.base)
-        factor = math.pow(self.factor, index)
-        symbol = self.symbol**2
-        return UnitBase(symbol, factor, base)
-
-    def convert_factor(self, unit):
-        if all(i == j for i, j in zip(self.base, unit.base)):
-            return self.factor / unit.factor
-        else:
-            raise RuntimeError('Unit Base Unmatched!')
+    def write_to(self, writer):
+        writer.write_unit(self.symbol)
 
 
 V = Variable
-
-
-class Unit:
-    kg = UnitBase(V('kg'), 1.0, (1, 0, 0))
-    m = UnitBase(V('m'), 1.0, (0, 1, 0))
-    s = UnitBase(V('s'), 1.0, (0, 0, 1))
-
-    cm = UnitBase(V('m'), 0.01, (0, 1, 0))
-    mm = UnitBase(V('mm'), 0.001, (0, 1, 0))
-
-    g = UnitBase(V('g'), 0.001, (1, 0, 0))
-
-    N = (kg*m/s**2).set_symbol(V('N'))
-    kN = N.scale(1000, V('kN'))
-    MN = N.scale(1000000, V('MN'))
-
-    Pa = (N/m**2).set_symbol(V('Pa'))
-    kPa = (kN/m**2).set_symbol(V('kPa'))
-    MPa = (MN/m**2).set_symbol(V('MPa'))
-
-
-class Assignment:
-    def __init__(self, var, expression):
-        self.variable = var  # type: Variable
-        self.expression = expression  # type: Expression
-
-    def calc(self):
-        self.variable.value = self.expression.calc()
-
-    def write_to(self, doc):
-        doc.write_assignment(self.variable, self.expression)

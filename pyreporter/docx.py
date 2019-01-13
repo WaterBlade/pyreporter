@@ -135,7 +135,7 @@ class DocX:
 
     def _add_xml(self, path: str, xml: str, with_head=True):
         if with_head:
-            xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + xml
+            xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + xml
         self.file_list.append(DataFile(path=path, xml=xml))
 
     def build_tree(self):
@@ -160,7 +160,7 @@ class DocX:
 
     def build_custom_xml(self):
         rels_xml = """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/></Relationships>"""
-        self._add_xml(path='customXml/_rels.item1.xml.rels', xml=rels_xml)
+        self._add_xml(path='customXml/_rels/item1.xml.rels', xml=rels_xml)
 
         item1_xml = """<b:Sources xmlns:b="http://schemas.openxmlformats.org/officeDocument/2006/bibliography" xmlns="http://schemas.openxmlformats.org/officeDocument/2006/bibliography" SelectedStyle="\APA.XSL" StyleName="APA"/>"""
         self._add_xml(path='customXml/item1.xml', xml=item1_xml, with_head=False)
@@ -664,7 +664,7 @@ class DocX:
         tree.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
         tree.add(E('w:r', E('w:t', '0')))
         tree.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
-        tree.add(E('w:r', E('w_t', ')')))
+        tree.add(E('w:r', E('w:t', ')')))
 
     def write_inline_figure(self, *, data, fmt, cx, cy):
         cx = int(cx * 914400)
@@ -793,13 +793,15 @@ class DocX:
         self.document_tree.add(ele)
 
     # math related
-    def write_mathpara(self, datas):
+    def write_math_composite(self, datas):
+        for data in datas:
+            data.write_to(self)
+
+    def write_mathpara(self, math_obj):
         tree = self.document_tree
-        tree.start('w:p')
         tree.start('m:oMathPara')
-        self.write_math(datas)
+        math_obj.write_to(self)
         tree.end('m:oMathPara')
-        tree.end('w:p')
 
     def write_math(self, datas):
         tree = self.document_tree
@@ -807,6 +809,21 @@ class DocX:
         for item in datas:
             item.write_to(self)
         tree.end('m:oMath')
+
+    def write_mul_equation(self, exps):
+        tree = self.document_tree
+        tree.start('m:eqArr')
+
+        tree.start('m:eqArrPr')
+        self._write_m_ctrlPr()
+        tree.end('m:eqArrPr')
+
+        for exp in exps:
+            tree.start('m:e')
+            exp.write_to(self)
+            tree.end('m:e')
+
+        tree.end('m:eqArr')
 
     def write_math_run(self, run: str, sty=None):
         tree = self.document_tree
@@ -834,6 +851,9 @@ class DocX:
 
     def write_variable(self, var):
         self.write_math_run(var)
+
+    def write_unit(self, unit):
+        self.write_math_run(unit, sty='p')
 
     def write_subscript_variable(self, base, sub):
         self._write_m_sSup(base, sub)
@@ -1007,18 +1027,7 @@ class DocX:
     def write_brace(self, exp):
         self._write_m_delimeter(exp, left='{', right='}')
 
-    def _write_m_eqArr(self, exps):
-        tree = self.document_tree
-        tree.start('m:eqArr')
 
-        tree.start('m:eqArrPr')
-        self._write_m_ctrlPr()
-        tree.end('m:eqArrPr')
-
-        for exp in exps:
-            self._write_named_element('m:e', exp)
-
-        tree.end('m:eqArr')
 
     # ===============================================================
     # document.xml
