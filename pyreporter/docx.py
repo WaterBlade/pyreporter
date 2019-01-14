@@ -118,6 +118,41 @@ class SequenceGenerator:
         return ret
 
 
+class DocInterface:
+    def add_heading(self):
+        pass
+
+    def add_paragraph(self):
+        pass
+
+    def add_figure(self):
+        pass
+
+    def add_table(self):
+        pass
+
+    def add_math(self):
+        pass
+
+    def add_definition(self):
+        pass
+
+    def add_procedure(self):
+        pass
+
+    def add_symbol_notes(self):
+        pass
+
+    def set_header(self):
+        pass
+
+    def set_cover(self):
+        pass
+
+    def get_bookmark(self):
+        pass
+
+
 class DocX:
     def __init__(self, path=''):
         self.path = path  # type: str
@@ -412,7 +447,7 @@ class DocX:
                    E('w:r', E('w:t', head)),
                    E('w:r', E('w:tab')),
                    E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})),
-                   E('w:r', E('w:instrText',{'xml:space': 'preserve'},
+                   E('w:r', E('w:instrText', {'xml:space': 'preserve'},
                               f' PAGEREF {mark_name} \\h ')),
                    E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})),
                    E('w:r', E('w:t', '0')),
@@ -840,27 +875,30 @@ class DocX:
         tree.add(E('m:t', run))
         tree.end('m:r')
 
-    def write_symbol_note(self, symbol_set):
+    def write_symbol_notes(self, notes):
+        for note in notes:
+            self.write_symbol_note(note[0], note[1], note[2])
+
+    def write_symbol_note(self, var, inform, unit=None):
         tree = self.document_tree
-        for symbol in symbol_set:
-            tree.start('w:p')
+        tree.start('w:p')
 
-            tree.add(E('w:pPr',
-                       E('w:tabs',
-                         E('w:tab', {'w:val': 'right', 'w:pos': '500'}),
-                         E('w:tab', {'w:val': 'center', 'w:pos':'600'}),
-                         E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
-            tree.add(E('w:r', E('w:tab')))
-            self.write_math([symbol])
-            tree.add(E('w:r', E('w:tab')))
-            self.write_run('―')
-            tree.add(E('w:r', E('w:tab')))
-            self.write_run(symbol.inform)
-            if symbol.unit is not None:
-                self.write_run('，单位：')
-                self.write_math([symbol.unit])
+        tree.add(E('w:pPr',
+                   E('w:tabs',
+                     E('w:tab', {'w:val': 'right', 'w:pos': '500'}),
+                     E('w:tab', {'w:val': 'center', 'w:pos':'600'}),
+                     E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
+        tree.add(E('w:r', E('w:tab')))
+        self.write_math([var])
+        tree.add(E('w:r', E('w:tab')))
+        self.write_run('―')
+        tree.add(E('w:r', E('w:tab')))
+        self.write_run(inform)
+        if unit is not None:
+            self.write_run('，单位：')
+            self.write_math([unit])
 
-            tree.end('w:p')
+        tree.end('w:p')
 
     def _write_m_ctrlPr(self, italic=False):
         tree = self.document_tree
@@ -910,6 +948,19 @@ class DocX:
 
         tree.start('m:f')
         tree.start('m:fPr')
+        tree.add(E('m:type', {'m:val': 'bar'}))
+        self._write_m_ctrlPr()
+        tree.end('m:fPr')
+        self._write_named_element('m:num', left)
+        self._write_named_element('m:den', right)
+        tree.end('m:f')
+
+    def write_flat_div(self, left, right):
+        tree = self.document_tree
+
+        tree.start('m:f')
+        tree.start('m:fPr')
+        tree.add(E('m:type', {'m:val': 'lin'}))
         self._write_m_ctrlPr()
         tree.end('m:fPr')
         self._write_named_element('m:num', left)

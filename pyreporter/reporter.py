@@ -1,7 +1,6 @@
 from PIL import Image
 from io import BytesIO
 from .docx import DocX
-from .expression import Expression, Variable
 import weakref
 from typing import Union
 
@@ -716,16 +715,216 @@ class MathRun(ReportElement):
         writer.write_math_run(self.data, self.sty)
 
 
-class SymbolNote(ReportElement):
-    def __init__(self, symbol_set):
-        self.symbol_set = symbol_set
+class SymbolNotes(ReportElement):
+    def __init__(self, note_list):
+        self.note_list = note_list
 
     def write_to(self, writer: DocX):
-        writer.write_symbol_note(self.symbol_set)
+        writer.write_symbol_notes(self.note_list)
 
 
-P = Paragraph
-MP = MathPara
+class Expression(ReportElement):
+    def __init__(self, left=None, right=None):
+        self.left = left
+        self.right = right
+
+    def write_to(self, doc):
+        pass
+
+    def __add__(self, other):
+        return Add(self, other)
+
+    def __radd__(self, other):
+        return Add(other, self)
+
+    def __sub__(self, other):
+        return Sub(self, other)
+
+    def __rsub__(self, other):
+        return Sub(other, self)
+
+    def __mul__(self, other):
+        return Mul(self, other)
+
+    def __rmul__(self, other):
+        return Mul(other, self)
+
+    def __truediv__(self, other):
+        return Div(self, other)
+
+    def __rtruediv__(self, other):
+        return Div(other, self)
+
+    def __pow__(self, other):
+        return Pow(self, other)
+
+    def __rpow__(self, other):
+        return Pow(other, self)
+
+    def __lt__(self, other):
+        return LesserThan(self, other)
+
+    def __le__(self, other):
+        return LesserOrEqual(self, other)
+
+    def __eq__(self, other):
+        return Equal(self, other)
+
+    def __ne__(self, other):
+        return NotEqual(self, other)
+
+    def __gt__(self, other):
+        return GreaterThan(self, other)
+
+    def __ge__(self, other):
+        return GreaterOrEqual(self, other)
+
+
+class Add(Expression):
+    def write_to(self, doc):
+        doc.write_add(self.left, self.right)
+
+
+class Sub(Expression):
+    def write_to(self, doc):
+        doc.write_sub(self.left, self.right)
+
+
+class Mul(Expression):
+    def write_to(self, doc):
+        doc.write_mul(self.left, self.right)
+
+
+class Div(Expression):
+    def write_to(self, doc):
+        doc.write_div(self.left, self.right)
+
+
+class FlatDiv(Expression):
+    def write_to(self, doc):
+        doc.write_flat_div(self.left, self.right)
+
+
+class Pow(Expression):
+    def write_to(self, doc):
+        if isinstance(self.left, Variable) and self.left.subscript is not None:
+            doc.write_pow_with_sub(Variable(self.left.symbol), Variable(self.left.subscript), self.right)
+        else:
+            doc.write_pow(self.left, self.right)
+
+
+class Radical(Expression):
+    def write_to(self, doc):
+        doc.write_radical(self.left, self.right)
+
+
+class LesserThan(Expression):
+    def write_to(self, doc):
+        doc.write_lesser_than(self.left, self.right)
+
+
+class LesserOrEqual(Expression):
+    def write_to(self, doc):
+        doc.write_lesser_or_equal(self.left, self.right)
+
+
+class Equal(Expression):
+    def write_to(self, doc):
+        doc.write_equal(self.left, self.right)
+
+
+class NotEqual(Expression):
+    def write_to(self, doc):
+        doc.write_not_equal(self.left, self.right)
+
+
+class GreaterThan(Expression):
+    def write_to(self, doc):
+        doc.write_greater_than(self.left, self.right)
+
+
+class GreaterOrEqual(Expression):
+    def write_to(self, doc):
+        doc.write_greater_or_equal(self.left, self.right)
+
+
+class Sin(Expression):
+    def write_to(self, doc):
+        doc.write_sin(self.left)
+
+
+class Cos(Expression):
+    def write_to(self, doc):
+        doc.write_cos(self.left)
+
+
+class Tan(Expression):
+    def write_to(self, doc):
+        doc.write_tan(self.left)
+
+
+class Cot(Expression):
+    def write_to(self, doc):
+        doc.write_cot(self.left)
+
+
+class ASin(Expression):
+    def write_to(self, doc):
+        doc.write_arcsin(self.left)
+
+
+class ACos(Expression):
+    def write_to(self, doc):
+        doc.write_arccos(self.left)
+
+
+class ATan(Expression):
+    def write_to(self, doc):
+        doc.write_arctan(self.left)
+
+
+class ACot(Expression):
+    def write_to(self, doc):
+        doc.write_arccot(self.left)
+
+
+# parenthesis: ()
+class Pr(Expression):
+    def write_to(self, doc):
+        doc.write_parenthesis(self.left)
+
+
+# square bracket: []
+class Sq(Expression):
+    def write_to(self, doc):
+        doc.write_bracket(self.left)
+
+
+# brace: {}
+class Br(Expression):
+    def write_to(self, doc):
+        doc.write_brace(self.left)
+
+
+class Variable(Expression):
+    def __init__(self, symbol, subscript=None):
+        super().__init__()
+        self.symbol = symbol
+        self.subscript = subscript
+
+    def write_to(self, doc):
+        if self.subscript is None:
+            doc.write_variable(self.symbol)
+        else:
+            doc.write_subscript_variable(Variable(self.symbol), Variable(self.subscript))
+
+
+class Unit(Variable):
+    def __init__(self, symbol):
+        super().__init__(symbol)
+
+    def write_to(self, writer):
+        writer.write_unit(self.symbol)
 
 
 def make_default_cover(project='**工程', name='**计算书',

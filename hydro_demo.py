@@ -1,14 +1,14 @@
 from pyreporter import (Report,
                         Formula, PiecewiseFormula,
                         Calculator, TrailSolver)
-from pyreporter import expression as exp
+from pyreporter import calculator as exp
 
 V = exp.Variable
 U = exp.Unit
 C = exp.Constant
 N = exp.Number
 
-Q = V('Q', inform='渡槽的过水流量', unit=U('m')**3/U('s'), precision=3)
+Q = V('Q', inform='渡槽的过水流量', unit=exp.FlatDiv(U('m')**3,U('s')), precision=3)
 A = V('A', inform='槽身过水断面闽面积', unit=U('m')**2, precision=3)
 R = V('R', inform='水力半径', unit=U('m'), precision=3)
 i = V('i', inform='槽底比降', precision=5)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     rep.add_heading('计算公式', 1)
     rep.add_math_definition(calc.get_definition())
     rep.add_symbol_note(calc.get_symbol_note())
-    rep.add_heading('计算过程', 1)
-    rep.add_math_procedure(ret1)
-    rep.add_math_procedure(ret2)
+    # rep.add_heading('计算过程', 1)
+    # rep.add_math_procedure(ret1)
+    # rep.add_math_procedure(ret2)
     rep.save('hydro_demo.docx')

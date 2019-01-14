@@ -1,10 +1,11 @@
 from pyreporter.docx import DocX
 from pyreporter.reporter import (Report, ReportComposite, MathComposite)
-from pyreporter.expression import V, Radical
+from pyreporter.calculator import Variable, Radical
 
 
 MC = MathComposite
 RC = ReportComposite
+V = Variable
 
 
 if __name__ == '__main__':
