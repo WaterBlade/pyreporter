@@ -48,8 +48,8 @@ class ReportComposite(ReportElement):
         for data in self.datas:
             data.build_when_add_to_report()
 
-    def write_to(self, writer):
-        writer.write_composite(self.datas)
+    def visit(self, visitor):
+        visitor.visit_composite(self.datas)
 
 
 class Report:
@@ -71,7 +71,7 @@ class Report:
 
     def save(self, path):
         self.writer.set_path(path)
-        self.write_to(self.writer)
+        self.visit(self.writer)
 
     def set_default_cover(self):
         self.set_cover(make_default_cover())
@@ -145,16 +145,16 @@ class Report:
     def get_root(self):
         return self
 
-    def write_to(self, writer):
+    def visit(self, writer):
         self.catalog.add_heading(self.heading_list)
         if self.cover is not None:
             self.data_list = [self.cover, self.catalog] + self.data_list
-        writer.write_reporter(self)
+        writer.visit_reporter(self)
 
 
 class PageBreak(ReportComposite):
-    def write_to(self, writer):
-        writer.write_page_break()
+    def visit(self, visitor):
+        visitor.visit_page_break()
 
 
 class Catalog(ReportElement):
@@ -186,9 +186,9 @@ class Catalog(ReportElement):
                                               '.'.join(str(c) for c in code),
                                               h.mark.mark_id))
 
-    def write_to(self, writer: DocX):
+    def visit(self, writer: DocX):
         catalog_level = self.get_root().catalog_level
-        writer.write_catalog(heads=self.heads, catalog_level=catalog_level)
+        writer.visit_catalog(heads=self.heads, catalog_level=catalog_level)
 
 
 class _CatalogHeading:
@@ -223,10 +223,8 @@ class Heading(ReportElement):
 
         root.heading_list.append(self)
 
-    def write_to(self, writer: DocX):
-        writer.write_heading(para=self.para,
-                             level=self.level,
-                             need_page_break=self.need_page_break)
+    def visit(self, writer: DocX):
+        writer.visit_heading(para=self.para, level=self.level, need_page_break=self.need_page_break)
 
 
 class Paragraph(ReportElement):
@@ -251,9 +249,8 @@ class Paragraph(ReportElement):
             self.datas.append(data)
             data.set_root(self)
 
-    def write_to(self, writer: DocX):
-        writer.write_paragraph(*self.datas,
-                               prop=self.prop)
+    def visit(self, writer: DocX):
+        writer.visit_paragraph(*self.datas, prop=self.prop)
 
 
 class _ParaProp:
@@ -287,14 +284,9 @@ class _ParaProp:
     def set_keep_next(self, val):
         self.keep_next = val
 
-    def write_to(self, writer: DocX):
-        writer.write_para_prop(style=self.style,
-                               jc=self.jc,
-                               spacing=self.spacing,
-                               snap_to_grid=self.snap_to_grid,
-                               font=self.font,
-                               size=self.size,
-                               keep_next=self.keep_next)
+    def visit(self, writer: DocX):
+        writer.visit_para_prop(style=self.style, jc=self.jc, spacing=self.spacing, snap_to_grid=self.snap_to_grid,
+                               font=self.font, size=self.size, keep_next=self.keep_next)
 
 
 class _ParaSpacing:
@@ -302,8 +294,8 @@ class _ParaSpacing:
         self.before = before
         self.after = after
 
-    def write_to(self, writer):
-        writer.write_para_prop_spacing(self.before, self.after)
+    def visit(self, writer):
+        writer.visit_para_prop_spacing(self.before, self.after)
 
 
 class Run(ReportElement):
@@ -314,12 +306,8 @@ class Run(ReportElement):
         self.italic = italic
         self.bold = bold
 
-    def write_to(self, writer: DocX):
-        writer.write_run(text=self.text,
-                         size=self.size,
-                         font=self.font,
-                         italic=self.italic,
-                         bold=self.bold)
+    def visit(self, writer: DocX):
+        writer.visit_run(text=self.text, size=self.size, font=self.font, italic=self.italic, bold=self.bold)
 
 
 class Table(ReportElement):
@@ -362,10 +350,8 @@ class Table(ReportElement):
             self.reference = None
         self.title = title
 
-    def write_to(self, writer: DocX):
-        writer.write_table(data_by_rows=self.data_by_rows,
-                           prop=self.prop,
-                           title=self.title)
+    def visit(self, writer: DocX):
+        writer.visit_table(data_by_rows=self.data_by_rows, prop=self.prop, title=self.title)
 
 
 class _TableProp:
@@ -399,14 +385,9 @@ class _TableProp:
     def set_cell_margin(self, top=0, bottom=0, left=0, right=0):
         self.cell_margin = _TableCellMargin(top, bottom, left, right)
 
-    def write_to(self, writer: DocX):
-        writer.write_table_prop(jc=self.jc,
-                                style=self.style,
-                                layout=self.layout,
-                                pos_pr=self.pos_pr,
-                                border=self.border,
-                                grid_col=self.grid_col,
-                                cell_margin=self.cell_margin)
+    def visit(self, writer: DocX):
+        writer.visit_table_prop(jc=self.jc, style=self.style, layout=self.layout, pos_pr=self.pos_pr,
+                                border=self.border, grid_col=self.grid_col, cell_margin=self.cell_margin)
 
 
 class _TablePosPr:
@@ -416,8 +397,8 @@ class _TablePosPr:
         self.x_spec = x_spec
         self.y_spec = y_spec
 
-    def write_to(self, writer: DocX):
-        writer.write_table_prop_pos_pr(self.x, self.y, self.x_spec, self.y_spec)
+    def visit(self, writer: DocX):
+        writer.visit_table_prop_pos_pr(self.x, self.y, self.x_spec, self.y_spec)
 
 
 class _TableBorder:
@@ -430,9 +411,8 @@ class _TableBorder:
         self.inside_h = inside_h
         self.size = size
 
-    def write_to(self, writer: DocX):
-        writer.write_table_prop_border(self.top, self.bottom, self.left, self.right,
-                                       self.inside_v, self.inside_h,
+    def visit(self, writer: DocX):
+        writer.visit_table_prop_border(self.top, self.bottom, self.left, self.right, self.inside_v, self.inside_h,
                                        self.size)
 
 
@@ -440,8 +420,8 @@ class _TableGridCol:
     def __init__(self, col_size_list: list):
         self.col_size_list = col_size_list
 
-    def write_to(self, writer: DocX):
-        writer.write_table_prop_grid_col(self.col_size_list)
+    def visit(self, writer: DocX):
+        writer.visit_table_prop_grid_col(self.col_size_list)
 
 
 class _TableCellMargin:
@@ -451,8 +431,8 @@ class _TableCellMargin:
         self.left = left
         self.right = right
 
-    def write_to(self, writer: DocX):
-        writer.write_table_prop_cell_margin(self.top, self.bottom, self.left, self.right)
+    def visit(self, writer: DocX):
+        writer.visit_table_prop_cell_margin(self.top, self.bottom, self.left, self.right)
 
 
 class Cell(ReportElement):
@@ -469,9 +449,8 @@ class Cell(ReportElement):
     def build_when_add_to_report(self):
         self.para.build_when_add_to_report()
 
-    def write_to(self, writer: DocX):
-        writer.write_cell(para=self.para,
-                          prop=self.prop)
+    def visit(self, writer: DocX):
+        writer.visit_cell(para=self.para, prop=self.prop)
 
 
 class _CellProp:
@@ -490,9 +469,8 @@ class _CellProp:
         if v_align:
             self.v_align = v_align
 
-    def write_to(self, writer: DocX):
-        writer.write_cell_prop(v_align=self.v_align,
-                               border=self.border)
+    def visit(self, writer: DocX):
+        writer.visit_cell_prop(v_align=self.v_align, border=self.border)
 
 
 class _CellBorder:
@@ -503,8 +481,8 @@ class _CellBorder:
         self.right = right
         self.size = size
 
-    def write_to(self, writer: DocX):
-        writer.write_cell_prop_border(self.top, self.bottom, self.left, self.right, self.size)
+    def visit(self, writer: DocX):
+        writer.visit_cell_prop_border(self.top, self.bottom, self.left, self.right, self.size)
 
 
 class Footnote(ReportElement):
@@ -518,8 +496,8 @@ class Footnote(ReportElement):
             else:
                 self.datas.append(data)
 
-    def write_to(self, writer):
-        writer.write_footnote(self.datas)
+    def visit(self, writer):
+        writer.visit_footnote(self.datas)
 
 
 class Bookmark(ReportElement):
@@ -531,9 +509,8 @@ class Bookmark(ReportElement):
     def build_when_add_to_report(self):
         self.mark_id = next(self.get_root().index_generator)
 
-    def write_to(self, writer: DocX):
-        writer.write_bookmark(type_=self.type_,
-                              mark_id=self.mark_id)
+    def visit(self, writer: DocX):
+        writer.visit_bookmark(type_=self.type_, mark_id=self.mark_id)
 
 
 class HeadingMark(ReportElement):
@@ -544,17 +521,16 @@ class HeadingMark(ReportElement):
     def build_when_add_to_report(self):
         self.mark_id = next(self.get_root().index_generator)
 
-    def write_to(self, writer: DocX):
-        writer.write_heading_mark(head=self.head,
-                                  mark_id=self.mark_id)
+    def visit(self, writer: DocX):
+        writer.visit_heading_mark(head=self.head, mark_id=self.mark_id)
 
 
 class Reference(ReportElement):
     def __init__(self, mark):
         self.mark = mark
 
-    def write_to(self, writer: DocX):
-        writer.write_reference(mark_id=self.mark.mark_id)
+    def visit(self, writer: DocX):
+        writer.visit_reference(mark_id=self.mark.mark_id)
 
 
 class Figure(ReportElement):
@@ -589,11 +565,10 @@ class Figure(ReportElement):
 
 
 class InlineFigure(Figure):
-    def write_to(self, writer: DocX):
+    def visit(self, writer: DocX):
         x, y = self.get_inch_size()
 
-        writer.write_inline_figure(data=self.data, fmt=self.format,
-                                   cx=x, cy=y)
+        writer.visit_inline_figure(data=self.data, fmt=self.format, cx=x, cy=y)
 
 
 class StandaloneFigure(Figure):
@@ -614,20 +589,17 @@ class StandaloneFigure(Figure):
             self.reference = None
         self.title = title
 
-    def write_to(self, writer: DocX):
+    def visit(self, writer: DocX):
         x, y = self.get_inch_size()
 
-        writer.write_standalone_figure(title=self.title,
-                                       data=self.data, fmt=self.format,
-                                       cx=x, cy=y)
+        writer.visit_standalone_figure(title=self.title, data=self.data, fmt=self.format, cx=x, cy=y)
 
 
 class FloatFigure(Figure):
-    def write_to(self, writer: DocX):
+    def visit(self, writer: DocX):
         x, y = self.get_inch_size()
 
-        writer.write_float_figure(data=self.data, fmt=self.format,
-                                  cx=x, cy=y)
+        writer.visit_float_figure(data=self.data, fmt=self.format, cx=x, cy=y)
 
 
 class MathComposite(ReportElement):
@@ -641,16 +613,16 @@ class MathComposite(ReportElement):
             item = MathRun(item)
         self.datas.append(item)
 
-    def write_to(self, writer):
-        writer.write_math_composite(self.datas)
+    def visit(self, writer):
+        writer.visit_math_composite(self.datas)
 
 
 class MathPara(ReportElement):
     def __init__(self, math_obj):
         self.math = math_obj
 
-    def write_to(self, writer):
-        writer.write_mathpara(self.math)
+    def visit(self, writer):
+        writer.visit_mathpara(self.math)
 
 
 class ReferencedMathPara(ReportElement):
@@ -670,8 +642,8 @@ class ReferencedMathPara(ReportElement):
 
         self.table = table
 
-    def write_to(self, writer):
-        self.table.write_to(writer)
+    def visit(self, writer):
+        self.table.visit(writer)
 
 
 class Math(ReportElement):
@@ -685,8 +657,8 @@ class Math(ReportElement):
             else:
                 raise TypeError('Unknown math type')
 
-    def write_to(self, writer):
-        writer.write_math(self.datas)
+    def visit(self, writer):
+        writer.visit_math(self.datas)
 
 
 class MathMultiLine(ReportElement):
@@ -695,16 +667,16 @@ class MathMultiLine(ReportElement):
         for eq in eqs:
             self.elements.append(eq)
 
-    def write_to(self, writer):
-        writer.write_math_multi_line(self.elements)
+    def visit(self, writer):
+        writer.visit_math_multi_line(self.elements)
 
 
 class MathMultiLineBrace(ReportElement):
     def __init__(self, exp):
         self.exp = exp
 
-    def write_to(self, writer: DocX):
-        writer.write_multi_line_brace(self.exp)
+    def visit(self, writer: DocX):
+        writer.visit_multi_line_brace(self.exp)
 
 
 class MathRun(ReportElement):
@@ -712,16 +684,16 @@ class MathRun(ReportElement):
         self.data = f'{data}'
         self.sty = sty
 
-    def write_to(self, writer: DocX):
-        writer.write_math_run(self.data, self.sty)
+    def visit(self, writer: DocX):
+        writer.visit_math_run(self.data, self.sty)
 
 
 class SymbolNote(ReportElement):
     def __init__(self, symbol_set):
         self.symbol_set = symbol_set
 
-    def write_to(self, writer: DocX):
-        writer.write_symbol_note(self.symbol_set)
+    def visit(self, writer: DocX):
+        writer.visit_symbol_note(self.symbol_set)
 
 
 P = Paragraph

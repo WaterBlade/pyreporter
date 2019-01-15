@@ -24,4 +24,4 @@ if __name__ == '__main__':
                            V('a') * V('b') / Radical(V('c') + 2, 2),
                            V('a') * V('b') / Radical(V('c') + 2, 2))
 
-    rep.write_to(DocX('hello_world.docx'))
+    rep.visit(DocX('hello_world.docx'))

@@ -30,6 +30,9 @@ class TreeBuilder:
             element_factory = Element
         self._factory = element_factory
 
+    def is_closed(self):
+        return len(self._elem) == 0
+
     def close(self):
         """Flush builder buffers and return toplevel document Element."""
         assert len(self._elem) == 0, "missing end tags"
@@ -87,6 +90,38 @@ class TreeBuilder:
         self._elem[-1].append(element)
 
 
+class ElementsBuilder:
+    def __init__(self):
+        self._curr = None  # type: TreeBuilder
+        self._list = []
+
+    def start(self, tag, attrs=None):
+        if self._curr is not None:
+            self._curr.start(tag, attrs)
+        else:
+            tree = TreeBuilder()
+            tree.start(tag, attrs)
+            self._curr = tree
+
+    def end(self, tag):
+        if self._curr is None:
+            raise RuntimeError('mismatching')
+        else:
+            self._curr.end(tag)
+            if self._curr.is_closed():
+                self._list.append(self._curr.close())
+                self._curr = None
+
+    def add(self, element):
+        if self._curr is None:
+            self._list.append(element)
+        else:
+            self._curr.add(element)
+
+    def get_elements(self):
+        return self._list
+
+
 def make_element(tag, *items) -> Element:
     ele = Element(tag)
     last_ele = None
@@ -101,6 +136,8 @@ def make_element(tag, *items) -> Element:
                 ele.text = item
             else:
                 last_ele.tail = item
+        elif isinstance(item, list):
+            ele.extend(item)
     return ele
 
 
@@ -133,6 +170,14 @@ class DocX:
         self.foot_id_gen = SequenceGenerator('', 2)
         self.mark_id_gen = SequenceGenerator('', 1)
 
+        self.doc_rels_elements = ElementsBuilder()
+
+        self.cover_elements = ElementsBuilder()
+        self.catalog_elements = ElementsBuilder()
+        self.body_elements = ElementsBuilder()
+
+        self.footnotes_elements = ElementsBuilder()
+
     def set_path(self, path):
         self.path = path
 
@@ -143,8 +188,6 @@ class DocX:
 
     def build_tree(self):
         self.build_document_xml_rels_tree()
-        self.build_document_tree()
-        self.build_footnotes_tree()
 
     def build_docx(self):
         self.build_content_type()
@@ -192,11 +235,12 @@ class DocX:
         self.build_webSettings()
 
     def build_document_xml_rels_tree(self):
-        ns = {'xmlns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
-        tree = TreeBuilder()
-        self.document_xml_rels_tree = tree
-        tree.start('Relationships', ns)
+        footer_1 = self.rel_id_gen.get_id()
+        footer_2 = self.rel_id_gen.get_id()
+        self.footer_1_rel_id = footer_1
+        self.footer_2_rel_id = footer_2
 
+    def build_document_xml_rels(self):
         self.write_relationship(self.rel_id_gen.get_id(),
                                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
                                 "theme/theme1.xml")
@@ -224,27 +268,27 @@ class DocX:
         self.write_relationship(self.rel_id_gen.get_id(),
                                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
                                 "numbering.xml")
-        footer_1 = self.rel_id_gen.get_id()
-        footer_2 = self.rel_id_gen.get_id()
-        self.write_relationship(footer_1,
+
+        self.write_relationship(self.footer_1_rel_id,
                                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
                                 "footer1.xml")
-        self.write_relationship(footer_2,
+        self.write_relationship(self.footer_2_rel_id,
                                 "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
                                 "footer2.xml")
-        self.footer_1_rel_id = footer_1
-        self.footer_2_rel_id = footer_2
 
-    def build_document_xml_rels(self):
-        self.document_xml_rels_tree.end('Relationships')
-        xml = tostring(self.document_xml_rels_tree.close(), encoding='unicode')
+        ns = {'xmlns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
+        root = E('Relationships', ns)
+        root.extend(self.doc_rels_elements.get_elements())
+        xml = tostring(root, encoding='unicode')
         self._add_xml(path='word/_rels/document.xml.rels', xml=xml)
 
     def build_theme1(self):
         xml = """<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office 主题"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Cambria"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ ゴシック"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Times New Roman"/><a:font script="Hebr" typeface="Times New Roman"/><a:font script="Thai" typeface="Angsana New"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="MoolBoran"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Times New Roman"/><a:font script="Uigh" typeface="Microsoft Uighur"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ 明朝"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Arial"/><a:font script="Hebr" typeface="Arial"/><a:font script="Thai" typeface="Cordia New"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="DaunPenh"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Arial"/><a:font script="Uigh" typeface="Microsoft Uighur"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="50000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="35000"><a:schemeClr val="phClr"><a:tint val="37000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="15000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="1"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:shade val="51000"/><a:satMod val="130000"/></a:schemeClr></a:gs><a:gs pos="80000"><a:schemeClr val="phClr"><a:shade val="93000"/><a:satMod val="130000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="94000"/><a:satMod val="135000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="0"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"><a:shade val="95000"/><a:satMod val="105000"/></a:schemeClr></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="25400" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="38100" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst><a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="0"/></a:camera><a:lightRig rig="threePt" dir="t"><a:rot lat="0" lon="0" rev="1200000"/></a:lightRig></a:scene3d><a:sp3d><a:bevelT w="63500" h="25400"/></a:sp3d></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="40000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="40000"><a:schemeClr val="phClr"><a:tint val="45000"/><a:shade val="99000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="20000"/><a:satMod val="255000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="-80000" r="50000" b="180000"/></a:path></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="80000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="30000"/><a:satMod val="200000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>"""
         self._add_xml(path='word/theme/theme1.xml', xml=xml)
 
-    def build_document_tree(self):
+    def build_document(self):
+        self._write_w_sectPr(self.footer_2_rel_id, page_start=1)
+
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -254,18 +298,12 @@ class DocX:
               'xmlns:w10': 'urn:schemas-microsoft-com:office:word',
               'xmlns:w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
-        tree = TreeBuilder()
-        self.document_tree = tree
-        tree.start('w:document', ns)
-        tree.start('w:body')
+        doc = E('w:document', ns)
 
-    def build_document(self):
-        tree = self.document_tree
-        self._write_w_sectPr(self.footer_2_rel_id, page_start=1)
-        tree.end('w:body')
-        tree.end('w:document')
+        body = E('w:body', self.body_elements.get_elements())
+        doc.append(body)
 
-        xml = tostring(self.document_tree.close(), encoding='unicode')
+        xml = tostring(doc, encoding='unicode')
         self._add_xml(path='word/document.xml', xml=xml)
 
     def build_endnotes(self):
@@ -283,7 +321,7 @@ class DocX:
         xml = """<w:ftr xmlns:ve="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"><w:sdt><w:sdtPr><w:id w:val="23625823"/><w:docPartObj><w:docPartGallery w:val="Page Numbers (Bottom of Page)"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent><w:p w:rsidR="003221F4" w:rsidRDefault="00A805B6"><w:pPr><w:pStyle w:val="a5"/><w:jc w:val="center"/></w:pPr><w:fldSimple w:instr=" PAGE   \* MERGEFORMAT "><w:r w:rsidR="006E593F" w:rsidRPr="006E593F"><w:rPr><w:noProof/><w:lang w:val="zh-CN"/></w:rPr><w:t>2</w:t></w:r></w:fldSimple></w:p></w:sdtContent></w:sdt><w:p w:rsidR="003221F4" w:rsidRDefault="003221F4"><w:pPr><w:pStyle w:val="a5"/></w:pPr></w:p></w:ftr>"""
         self._add_xml(path='word/footer2.xml', xml=xml)
 
-    def build_footnotes_tree(self):
+    def build_footnotes(self):
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -293,17 +331,16 @@ class DocX:
               'xmlns:w10': 'urn:schemas-microsoft-com:office:word',
               'xmlns:w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
-        tree = TreeBuilder()
-        self.footnotes_tree = tree
-        tree.start('w:footnotes', ns)
-        tree.add(E('w:footnote', {'w:type': 'separator', 'w:id': '0'},
-                   E('w:p', E('w:r', E('w:separator')))))
-        tree.add(E('w:footnote', {'w:type': 'continuationSeparator', 'w:id': '1'},
-                   E('w:p', E('w:r', E('w:continuationSeparator')))))
+        footnotes = E('w:footnotes', ns)
 
-    def build_footnotes(self):
-        self.footnotes_tree.end('w:footnotes')
-        xml = tostring(self.footnotes_tree.close(), encoding='unicode')
+        footnotes.append(E('w:footnote', {'w:type': 'separator', 'w:id': '0'},
+                           E('w:p', E('w:r', E('w:separator')))))
+        footnotes.append(E('w:footnote', {'w:type': 'continuationSeparator', 'w:id': '1'},
+                           E('w:p', E('w:r', E('w:continuationSeparator')))))
+
+        footnotes.extend(self.footnotes_elements.get_elements())
+
+        xml = tostring(footnotes, encoding='unicode')
         self._add_xml(path='word/footnotes.xml', xml=xml)
 
     def build_numbering(self):
@@ -332,23 +369,23 @@ class DocX:
             for fig in self.figure_list:
                 z.writestr(fig.path, data=fig.figure)
 
-    def write_reporter(self, doc):
+    def visit_reporter(self, doc):
         self.build_tree()
         for data in doc.data_list:
-            data.write_to(self)
+            data.visit(self)
         self.build_docx()
         self.save()
 
-    def write_composite(self, datas):
+    def visit_composite(self, datas):
         for data in datas:
-            data.write_to(self)
+            data.visit(self)
 
     # ===============================================================
     # document.xml
     # ===============================================================
 
-    def _write_w_sectPr(self, footer_rel_id, page_start=None):
-        tree = self.document_tree
+    def _write_w_sectPr(self, footer_rel_id=None, page_start=None):
+        tree = self.body_elements
         tree.start('w:sectPr')
 
         tree.add(E('w:footerReference', {'w:type': 'default', 'r:id': footer_rel_id}))
@@ -363,11 +400,11 @@ class DocX:
 
         tree.end('w:sectPr')
 
-    def write_page_break(self):
-        self.document_tree.add(E('w:p', E('w:r', E('w:br', {'w:type': 'page'}))))
+    def visit_page_break(self):
+        self.body_elements.add(E('w:p', E('w:r', E('w:br', {'w:type': 'page'}))))
 
-    def write_catalog(self, *, heads, catalog_level):
-        tree = self.document_tree
+    def visit_catalog(self, *, heads, catalog_level):
+        tree = self.body_elements
 
         tree.add(E('w:p',
                    E('w:pPr', E('w:jc', {'w:val': 'center'})),
@@ -404,7 +441,7 @@ class DocX:
         tree.end('w:p')
 
     def _write_heading_hyperlink(self, serial_code, head, mark_name):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.add(E('w:hyperlink',
                    {'w:anchor': mark_name, 'w:history': '1'},
                    E('w:r', E('w:t', serial_code)),
@@ -418,25 +455,25 @@ class DocX:
                    E('w:r', E('w:t', '0')),
                    E('w:r', E('w:fldChar', {'w:fldCharType': 'end'}))))
 
-    def write_heading(self, *, para, level, need_page_break):
+    def visit_heading(self, *, para, level, need_page_break):
         if need_page_break:
-            self.write_page_break()
+            self.visit_page_break()
         para.prop.set_style(f'{level}')
-        para.write_to(self)
+        para.visit(self)
 
-    def write_paragraph(self, *data, prop):
-        tree = self.document_tree
+    def visit_paragraph(self, *data, prop):
+        tree = self.body_elements
         tree.start('w:p')
 
-        prop.write_to(self)
+        prop.visit(self)
 
         for item in data:
-            item.write_to(self)
+            item.visit(self)
 
         tree.end('w:p')
 
-    def write_para_prop(self, *, style, jc, spacing, snap_to_grid, font, size, keep_next):
-        tree = self.document_tree
+    def visit_para_prop(self, *, style, jc, spacing, snap_to_grid, font, size, keep_next):
+        tree = self.body_elements
         tree.start('w:pPr')
         if style is not None:
             tree.add(E('w:pStyle', {'w:val': style}))
@@ -447,25 +484,24 @@ class DocX:
         if snap_to_grid:
             tree.add(E('w:snapToGrid', {'w:val': snap_to_grid}))
         if spacing:
-            spacing.write_to(self)
+            spacing.visit(self)
         if font:
             tree.add(E('w:rPr',
                        E('w:rFonts', {'w:eastAsia': font}),
                        E('w:sz', {'w:val': f'{size}'})))
         tree.end('w:pPr')
 
-    def write_para_prop_spacing(self, before, after):
+    def visit_para_prop_spacing(self, before, after):
         attr = dict()
         if before is not None:
             attr['w:before'] = f'{before}'
         if after is not None:
             attr['w:after'] = f'{after}'
 
-        self.document_tree.add(E('w:spacing', attr))
+        self.body_elements.add(E('w:spacing', attr))
 
-    def write_run(self, text: str, *,
-                  size=None, font=None, italic=False, bold=False):
-        tree = self.document_tree
+    def visit_run(self, text: str, *, size=None, font=None, italic=False, bold=False):
+        tree = self.body_elements
         tree.start('w:r')
 
         tree.start('w:rPr')
@@ -482,28 +518,27 @@ class DocX:
         tree.add(E('w:t', text))
         tree.end('w:r')
 
-    def write_table(self, *, data_by_rows, prop, title):
-        tree = self.document_tree
+    def visit_table(self, *, data_by_rows, prop, title):
+        tree = self.body_elements
         if title is not None:
             title.prop.set_style('a9')
             title.prop.set_keep_next(True)
-            title.write_to(self)
+            title.visit(self)
 
         tree.start('w:tbl')
 
-        prop.write_to(self)
+        prop.visit(self)
 
         for row in data_by_rows:
             tree.start('w:tr')
             for col in row:
-                col.write_to(self)
+                col.visit(self)
             tree.end('w:tr')
 
         tree.end('w:tbl')
 
-    def write_table_prop(self, *,
-                         jc, style, layout, pos_pr, border, grid_col, cell_margin):
-        tree = self.document_tree
+    def visit_table_prop(self, *, jc, style, layout, pos_pr, border, grid_col, cell_margin):
+        tree = self.body_elements
         tree.start('w:tblPr')
         if jc:
             tree.add(E('w:jc', {'w:val': jc}))
@@ -512,17 +547,17 @@ class DocX:
             tree.add(E('w:tblStyle', {'w:val': style}))
 
         if pos_pr is not None:
-            pos_pr.write_to(self)
+            pos_pr.visit(self)
         if border is not None:
-            border.write_to(self)
+            border.visit(self)
         if cell_margin is not None:
-            cell_margin.write_to(self)
+            cell_margin.visit(self)
         tree.end('w:tblPr')
 
         if grid_col is not None:
-            grid_col.write_to(self)
+            grid_col.visit(self)
 
-    def write_table_prop_pos_pr(self, tblpX, tblpY, tblpXSpec, tblpYSpec):
+    def visit_table_prop_pos_pr(self, tblpX, tblpY, tblpXSpec, tblpYSpec):
         if tblpX or tblpXSpec or tblpY or tblpYSpec:
             attr = dict()
             attr['w:horizonAnchor'] = 'margin'
@@ -535,11 +570,11 @@ class DocX:
                 attr['w:tblpY'] = f'{tblpY}'
             if tblpYSpec:
                 attr['w:tblpYSpec'] = f'{tblpYSpec}'
-            self.document_tree.add((E('w:tblpPr', attr)))
+            self.body_elements.add((E('w:tblpPr', attr)))
 
-    def write_table_prop_border(self, top, bottom, left, right,
+    def visit_table_prop_border(self, top, bottom, left, right,
                                 inside_v, inside_h, size=4):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('w:tblBorders')
         for exist, pos in zip([top, bottom, left, right, inside_v, inside_h],
                               ['top', 'bottom', 'left', 'right', 'insideV', 'insideH']):
@@ -551,43 +586,43 @@ class DocX:
                             'w:color': 'auto'}))
         tree.end('w:tblBorders')
 
-    def write_table_prop_grid_col(self, width_list: list = None):
-        tree = self.document_tree
+    def visit_table_prop_grid_col(self, width_list: list = None):
+        tree = self.body_elements
         tree.start('w:tblGrid')
         for width in width_list:
             tree.add(E('w:gridCol', {'w:w': f'{width}'}))
         tree.end('w:tblGrid')
 
-    def write_table_prop_cell_margin(self, top, bottom, left, right):
-        self.document_tree.add(E('w:tblCellMar',
+    def visit_table_prop_cell_margin(self, top, bottom, left, right):
+        self.body_elements.add(E('w:tblCellMar',
                                  E('w:left', {'w:w': f'{left}', 'w:type': 'dxa'}),
                                  E('w:right', {'w:w': f'{right}', 'w:type': 'dxa'}),
                                  E('w:top', {'w:w': f'{top}', 'w:type': 'dxa'}),
                                  E('w:bottom', {'w:w': f'{bottom}', 'w:type': 'dxa'})))
 
-    def write_cell(self, *, para, prop):
-        tree = self.document_tree
+    def visit_cell(self, *, para, prop):
+        tree = self.body_elements
         tree.start('w:tc')
 
-        prop.write_to(self)
+        prop.visit(self)
 
         if prop.jc:
             para.prop.set_jc(prop.jc)
-        para.write_to(self)
+        para.visit(self)
 
         tree.end('w:tc')
 
-    def write_cell_prop(self, v_align, border):
-        tree = self.document_tree
+    def visit_cell_prop(self, v_align, border):
+        tree = self.body_elements
         tree.start('w:tcPr')
         tree.add(E('w:tcW', {'w:w': '0', 'w:type': 'auto'}))
         tree.add(E('w:vAlign', {'w:val': v_align}))
         if border:
-            border.write_to(self)
+            border.visit(self)
         tree.end('w:tcPr')
 
-    def write_cell_prop_border(self, top, bottom, left, right, size):
-        tree = self.document_tree
+    def visit_cell_prop_border(self, top, bottom, left, right, size):
+        tree = self.body_elements
         tree.start('w:tcBorders')
         for exist, pos in zip([top, bottom, left, right],
                               ['top', 'bottom', 'left', 'right']):
@@ -599,14 +634,14 @@ class DocX:
                             'w:color': 'auto'}))
         tree.end('w:tcBorders')
 
-    def write_footnote(self, datas):
+    def visit_footnote(self, datas):
         foot_id = self.foot_id_gen.get_id()
 
-        self.document_tree.add(E('w:r',
+        self.body_elements.add(E('w:r',
                                  E('w:rPr', E('w:rStyle', {'w:val': 'aa'})),
                                  E('w:footnoteReference', {'w:id': foot_id})))
 
-        tree = self.footnotes_tree
+        tree = self.footnotes_elements
 
         tree.start('w:footnote', {'w:id': foot_id})
 
@@ -618,16 +653,16 @@ class DocX:
         tree.add(E('w:r', {'xml:space': 'preserve'}, ' '))
 
         for data in datas:
-            data.write_to(self)
+            data.visit(self)
 
         tree.end('w:p')
 
         tree.end('w:footnote')
 
-    def write_bookmark(self, type_, mark_id):
+    def visit_bookmark(self, type_, mark_id):
         mark_id = f'{mark_id}'
         mark_name = f'_Mark{mark_id}'
-        tree = self.document_tree
+        tree = self.body_elements
 
         tree.add(E('w:bookmarkStart', {'w:id': mark_id, 'w:name': mark_name}))
         tree.add(E('w:r', E('w:t', type_)))
@@ -649,18 +684,18 @@ class DocX:
         tree.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
         tree.add(E('w:bookmarkEnd', {'w:id': mark_id}))
 
-    def write_heading_mark(self, *, head, mark_id):
+    def visit_heading_mark(self, *, head, mark_id):
         mark_id = f'{mark_id}'
         mark_name = f'_Mark{mark_id}'
 
-        tree = self.document_tree
+        tree = self.body_elements
         tree.add(E('w:bookmarkStart', {'w:id': mark_id, 'w:name': mark_name}))
         tree.add(E('w:r', E('w:t', head)))
         tree.add(E('w:bookmarkEnd', {'w:id': mark_id}))
 
-    def write_reference(self, mark_id):
+    def visit_reference(self, mark_id):
         mark_name = f'_Mark{mark_id}'
-        tree = self.document_tree
+        tree = self.body_elements
         tree.add(E('w:r', E('w:t', '(')))
         tree.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
         tree.add(E('w:r', E('w:instrText', f'REF {mark_name} \\h')))
@@ -669,7 +704,7 @@ class DocX:
         tree.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
         tree.add(E('w:r', E('w:t', ')')))
 
-    def write_inline_figure(self, *, data, fmt, cx, cy):
+    def visit_inline_figure(self, *, data, fmt, cx, cy):
         cx = int(cx * 914400)
         cy = int(cy * 914400)
 
@@ -681,7 +716,7 @@ class DocX:
                                 type_='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
                                 target=f'media/image{fig_id}.{fmt}')
 
-        tree = self.document_tree
+        tree = self.body_elements
 
         tree.start('w:r')
 
@@ -705,23 +740,22 @@ class DocX:
 
         tree.end('w:r')
 
-    def write_standalone_figure(self, *, title, data, fmt, cx, cy):
-        tree = self.document_tree
+    def visit_standalone_figure(self, *, title, data, fmt, cx, cy):
+        tree = self.body_elements
         tree.start('w:p')
         tree.start('w:pPr')
         tree.add(E('w:jc', {'w:val': 'center'}))
         if title is not None:
             tree.add(E('w:keepNext'))
         tree.end('w:pPr')
-        self.write_inline_figure(data=data, fmt=fmt, cx=cx, cy=cy)
+        self.visit_inline_figure(data=data, fmt=fmt, cx=cx, cy=cy)
         tree.end('w:p')
 
         if title is not None:
             title.prop.set_style('a9')
-            title.write_to(self)
+            title.visit(self)
 
-    def write_float_figure(self, *, data, fmt, cx, cy,
-                           xoff=0, yoff=0, xspec=None, yspec=None):
+    def visit_float_figure(self, *, data, fmt, cx, cy, xoff=0, yoff=0, xspec=None, yspec=None):
         cx = int(cx * 914400)
         cy = int(cy * 914400)
         xoff = int(xoff * 914400)
@@ -745,7 +779,7 @@ class DocX:
         else:
             ypos = E('wp:posOffset', f'{yoff}')
 
-        tree = self.document_tree
+        tree = self.body_elements
 
         tree.start('w:p')
         tree.start('w:drawing')
@@ -793,28 +827,28 @@ class DocX:
                         E('a:ext', {'cx': f'{cx}', 'cy': f'{cy}'})),
                       E('a:prstGeom', {'prst': 'rect'},
                         E('a:avLst'))))))
-        self.document_tree.add(ele)
+        self.body_elements.add(ele)
 
     # math related
-    def write_math_composite(self, datas):
+    def visit_math_composite(self, datas):
         for data in datas:
-            data.write_to(self)
+            data.visit(self)
 
-    def write_mathpara(self, math_obj):
-        tree = self.document_tree
+    def visit_mathpara(self, math_obj):
+        tree = self.body_elements
         tree.start('m:oMathPara')
-        math_obj.write_to(self)
+        math_obj.visit(self)
         tree.end('m:oMathPara')
 
-    def write_math(self, datas):
-        tree = self.document_tree
+    def visit_math(self, datas):
+        tree = self.body_elements
         tree.start('m:oMath')
         for item in datas:
-            item.write_to(self)
+            item.visit(self)
         tree.end('m:oMath')
 
-    def write_math_multi_line(self, exps):
-        tree = self.document_tree
+    def visit_math_multi_line(self, exps):
+        tree = self.body_elements
         tree.start('m:eqArr')
 
         tree.start('m:eqArrPr')
@@ -823,13 +857,13 @@ class DocX:
 
         for exp in exps:
             tree.start('m:e')
-            exp.write_to(self)
+            exp.visit(self)
             tree.end('m:e')
 
         tree.end('m:eqArr')
 
-    def write_math_run(self, run: str, sty=None):
-        tree = self.document_tree
+    def visit_math_run(self, run: str, sty=None):
+        tree = self.body_elements
         tree.start('m:r')
 
         if sty:
@@ -840,8 +874,8 @@ class DocX:
         tree.add(E('m:t', run))
         tree.end('m:r')
 
-    def write_symbol_note(self, symbol_set):
-        tree = self.document_tree
+    def visit_symbol_note(self, symbol_set):
+        tree = self.body_elements
         for symbol in symbol_set:
             tree.start('w:p')
 
@@ -851,19 +885,19 @@ class DocX:
                          E('w:tab', {'w:val': 'center', 'w:pos':'600'}),
                          E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
             tree.add(E('w:r', E('w:tab')))
-            self.write_math([symbol])
+            self.visit_math([symbol])
             tree.add(E('w:r', E('w:tab')))
-            self.write_run('―')
+            self.visit_run('―')
             tree.add(E('w:r', E('w:tab')))
-            self.write_run(symbol.inform)
+            self.visit_run(symbol.inform)
             if symbol.unit is not None:
-                self.write_run('，单位：')
-                self.write_math([symbol.unit])
+                self.visit_run('，单位：')
+                self.visit_math([symbol.unit])
 
             tree.end('w:p')
 
     def _write_m_ctrlPr(self, italic=False):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:ctrlPr')
 
         tree.start('w:rPr')
@@ -874,39 +908,39 @@ class DocX:
 
         tree.end('m:ctrlPr')
 
-    def write_variable(self, var):
-        self.write_math_run(var)
+    def visit_variable(self, var):
+        self.visit_math_run(var)
 
-    def write_unit(self, unit):
-        self.write_math_run(unit, sty='p')
+    def visit_unit(self, unit):
+        self.visit_math_run(unit, sty='p')
 
-    def write_subscript_variable(self, base, sub):
+    def visit_subscript_variable(self, base, sub):
         self._write_m_sSup(base, sub)
 
-    def write_add(self, left, right):
-        left.write_to(self)
-        self.write_math_run('+', sty='p')
-        right.write_to(self)
+    def visit_add(self, left, right):
+        left.visit(self)
+        self.visit_math_run('+', sty='p')
+        right.visit(self)
 
-    def write_sub(self, left, right):
-        left.write_to(self)
-        self.write_math_run('-', sty='p')
-        right.write_to(self)
+    def visit_sub(self, left, right):
+        left.visit(self)
+        self.visit_math_run('-', sty='p')
+        right.visit(self)
 
-    def write_mul(self, left, right):
-        left.write_to(self)
-        self.write_math_run('⋅', sty='p')
-        right.write_to(self)
+    def visit_mul(self, left, right):
+        left.visit(self)
+        self.visit_math_run('⋅', sty='p')
+        right.visit(self)
 
     def _write_named_element(self, name, exp):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start(name)
         if exp is not None:
-            exp.write_to(self)
+            exp.visit(self)
         tree.end(name)
 
-    def write_div(self, left, right):
-        tree = self.document_tree
+    def visit_div(self, left, right):
+        tree = self.body_elements
 
         tree.start('m:f')
         tree.start('m:fPr')
@@ -916,8 +950,8 @@ class DocX:
         self._write_named_element('m:den', right)
         tree.end('m:f')
 
-    def write_radical(self, exp, index):
-        tree = self.document_tree
+    def visit_radical(self, exp, index):
+        tree = self.body_elements
         tree.start('m:rad')
 
         tree.start('m:radPr')
@@ -931,38 +965,38 @@ class DocX:
 
         tree.end('m:rad')
 
-    def write_lesser_than(self, left, right):
-        left.write_to(self)
-        self.write_math_run('<', sty='p')
-        right.write_to(self)
+    def visit_lesser_than(self, left, right):
+        left.visit(self)
+        self.visit_math_run('<', sty='p')
+        right.visit(self)
 
-    def write_lesser_or_equal(self, left, right):
-        left.write_to(self)
-        self.write_math_run('≤', sty='p')
-        right.write_to(self)
+    def visit_lesser_or_equal(self, left, right):
+        left.visit(self)
+        self.visit_math_run('≤', sty='p')
+        right.visit(self)
 
-    def write_equal(self, left, right):
-        left.write_to(self)
-        self.write_math_run('=', sty='p')
-        right.write_to(self)
+    def visit_equal(self, left, right):
+        left.visit(self)
+        self.visit_math_run('=', sty='p')
+        right.visit(self)
 
-    def write_not_equal(self, left, right):
-        left.write_to(self)
-        self.write_math_run('≠', sty='p')
-        right.write_to(self)
+    def visit_not_equal(self, left, right):
+        left.visit(self)
+        self.visit_math_run('≠', sty='p')
+        right.visit(self)
 
-    def write_greater_than(self, left, right):
-        left.write_to(self)
-        self.write_math_run('>', sty='p')
-        right.write_to(self)
+    def visit_greater_than(self, left, right):
+        left.visit(self)
+        self.visit_math_run('>', sty='p')
+        right.visit(self)
 
-    def write_greater_or_equal(self, left, right):
-        left.write_to(self)
-        self.write_math_run('≥', sty='p')
-        right.write_to(self)
+    def visit_greater_or_equal(self, left, right):
+        left.visit(self)
+        self.visit_math_run('≥', sty='p')
+        right.visit(self)
 
     def _write_m_sSup(self, base, sup):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:sSup')
 
         tree.start('m:sSupPr')
@@ -975,7 +1009,7 @@ class DocX:
         tree.end('m:sSup')
 
     def _write_m_sSubSup(self, base, sub, sup):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:sSubSup')
 
         tree.start('m:sSubSupPr')
@@ -989,7 +1023,7 @@ class DocX:
         tree.end('m:sSubSup')
 
     def _write_m_nary(self, exp, sub, sup, name=None, limLoc='subSup'):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:nary')
 
         tree.start('m:naryPr')
@@ -1005,10 +1039,10 @@ class DocX:
 
         tree.end('m:nary')
 
-    def write_pow(self, exp, index):
+    def visit_pow(self, exp, index):
         self._write_m_sSup(exp, index)
 
-    def write_pow_with_sub(self, exp, sub, index):
+    def visit_pow_with_sub(self, exp, sub, index):
         self._write_m_sSubSup(exp, sub, index)
 
     def write_sum(self, exp, sub, sup):
@@ -1019,7 +1053,7 @@ class DocX:
         pass
 
     def _write_m_func(self, name, exp):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:func')
 
         tree.start('m:funcPr')
@@ -1027,39 +1061,39 @@ class DocX:
         tree.end('m:funcPr')
 
         tree.start('m:fName')
-        self.write_math_run(name, sty='p')
+        self.visit_math_run(name, sty='p')
         tree.end('m:fName')
 
         self._write_named_element('m:e', exp)
 
         tree.end('m:func')
 
-    def write_sin(self, exp):
+    def visit_sin(self, exp):
         self._write_m_func('sin', exp)
 
-    def write_cos(self, exp):
+    def visit_cos(self, exp):
         self._write_m_func('cos', exp)
 
-    def write_tan(self, exp):
+    def visit_tan(self, exp):
         self._write_m_func('tan', exp)
 
-    def write_cot(self, exp):
+    def visit_cot(self, exp):
         self._write_m_func('cot', exp)
 
-    def write_asin(self, exp):
+    def visit_arcsin(self, exp):
         self._write_m_func('arcsin', exp)
 
-    def write_acos(self, exp):
+    def visit_arccos(self, exp):
         self._write_m_func('arccos', exp)
 
-    def write_atan(self, exp):
+    def visit_arctan(self, exp):
         self._write_m_func('arctan', exp)
 
-    def write_acot(self, exp):
+    def visit_arccot(self, exp):
         self._write_m_func('arccot', exp)
 
     def _write_m_delimeter(self, *exps, left='(', right=')', sep='|'):
-        tree = self.document_tree
+        tree = self.body_elements
         tree.start('m:d')
 
         tree.start('m:dPr')
@@ -1075,16 +1109,16 @@ class DocX:
 
         tree.end('m:d')
 
-    def write_parenthesis(self, exp):
+    def visit_parenthesis(self, exp):
         self._write_m_delimeter(exp, left='(', right=')')
 
     def write_square_bracket(self, exp):
         self._write_m_delimeter(exp, left='[', right=']')
 
-    def write_brace(self, exp):
+    def visit_brace(self, exp):
         self._write_m_delimeter(exp, left='{', right='}')
 
-    def write_multi_line_brace(self, exp):
+    def visit_multi_line_brace(self, exp):
         self._write_m_delimeter(exp, left='{', right=None)
 
 
@@ -1098,6 +1132,4 @@ class DocX:
     # ===============================================================
 
     def write_relationship(self, id_, type_, target):
-        tree = self.document_xml_rels_tree
-        tree.add(E('Relationship',
-                   {'Id': id_, 'Type': type_, 'Target': target}))
+        self.doc_rels_elements.add(E('Relationship', {'Id': id_, 'Type': type_, 'Target': target}))

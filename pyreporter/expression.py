@@ -32,7 +32,7 @@ class Expression:
     def calc(self):
         pass
 
-    def write_to(self, doc):
+    def visit(self, visitor):
         pass
 
     def get_variable_set(self):
@@ -96,181 +96,181 @@ class Add(Expression):
     def calc(self):
         return self.left.calc() + self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_add(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_add(self.left, self.right)
 
 
 class Sub(Expression):
     def calc(self):
         return self.left.calc() - self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_sub(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_sub(self.left, self.right)
 
 
 class Mul(Expression):
     def calc(self):
         return self.left.calc() * self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_mul(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_mul(self.left, self.right)
 
 
 class Div(Expression):
     def calc(self):
         return self.left.calc() / self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_div(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_div(self.left, self.right)
 
 
 class Pow(Expression):
     def calc(self):
         return math.pow(self.left.calc(), self.right.calc())
 
-    def write_to(self, doc):
+    def visit(self, visitor):
         if isinstance(self.left, Variable) and self.left.subscript is not None:
             left = self.left.copy()
             left.subscript = None
-            doc.write_pow_with_sub(left, Variable(self.left.subscript), self.right)
+            visitor.visit_pow_with_sub(left, Variable(self.left.subscript), self.right)
         else:
-            doc.write_pow(self.left, self.right)
+            visitor.visit_pow(self.left, self.right)
 
 
 class Radical(Expression):
     def calc(self):
         return math.pow(self.left.calc(), 1 / self.right.calc())
 
-    def write_to(self, doc):
-        doc.write_radical(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_radical(self.left, self.right)
 
 
 class LesserThan(Expression):
     def calc(self):
         return self.left.calc() < self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_lesser_than(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_lesser_than(self.left, self.right)
 
 
 class LesserOrEqual(Expression):
     def calc(self):
         return self.left.calc() <= self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_lesser_or_equal(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_lesser_or_equal(self.left, self.right)
 
 
 class Equal(Expression):
     def calc(self):
         return self.left.calc() == self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_equal(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_equal(self.left, self.right)
 
 
 class NotEqual(Expression):
     def calc(self):
         return self.left.calc() != self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_not_equal(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_not_equal(self.left, self.right)
 
 
 class GreaterThan(Expression):
     def calc(self):
         return self.left.calc() > self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_greater_than(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_greater_than(self.left, self.right)
 
 
 class GreaterOrEqual(Expression):
     def calc(self):
         return self.left.calc() >= self.right.calc()
 
-    def write_to(self, doc):
-        doc.write_greater_or_equal(self.left, self.right)
+    def visit(self, visitor):
+        visitor.visit_greater_or_equal(self.left, self.right)
 
 
 class ToDegree(Expression):
     def calc(self):
         return math.degrees(self.left.calc())
 
-    def write_to(self, doc):
-        self.left.write_to(doc)
+    def visit(self, visitor):
+        self.left.visit(visitor)
 
 
 class ToRadian(Expression):
     def calc(self):
         return math.radians(self.left.calc())
 
-    def write_to(self, doc):
-        self.left.write_to(doc)
+    def visit(self, visitor):
+        self.left.visit(visitor)
 
 
 class Sin(Expression):
     def calc(self):
         return math.sin(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_sin(self.left)
+    def visit(self, visitor):
+        visitor.visit_sin(self.left)
 
 
 class Cos(Expression):
     def calc(self):
         return math.cos(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_cos(self.left)
+    def visit(self, visitor):
+        visitor.visit_cos(self.left)
 
 
 class Tan(Expression):
     def calc(self):
         return math.tan(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_tan(self.left)
+    def visit(self, visitor):
+        visitor.visit_tan(self.left)
 
 
 class Cot(Expression):
     def calc(self):
         return 1 / math.tan(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_cot(self.left)
+    def visit(self, visitor):
+        visitor.visit_cot(self.left)
 
 
 class ASin(Expression):
     def calc(self):
         return math.asin(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_arcsin(self.left)
+    def visit(self, visitor):
+        visitor.visit_arcsin(self.left)
 
 
 class ACos(Expression):
     def calc(self):
         return math.acos(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_arccos(self.left)
+    def visit(self, visitor):
+        visitor.visit_arccos(self.left)
 
 
 class ATan(Expression):
     def calc(self):
         return math.atan(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_arctan(self.left)
+    def visit(self, visitor):
+        visitor.visit_arctan(self.left)
 
 
 class ACot(Expression):
     def calc(self):
         return math.pi - math.atan(self.left.calc())
 
-    def write_to(self, doc):
-        doc.write_arccot(self.left)
+    def visit(self, visitor):
+        visitor.visit_arccot(self.left)
 
 
 # parenthesis: ()
@@ -278,8 +278,8 @@ class Pr(Expression):
     def calc(self):
         return self.left.calc()
 
-    def write_to(self, doc):
-        doc.write_parenthesis(self.left)
+    def visit(self, visitor):
+        visitor.visit_parenthesis(self.left)
 
 
 # square bracket: []
@@ -287,8 +287,8 @@ class Sq(Expression):
     def calc(self):
         return self.left.calc()
 
-    def write_to(self, doc):
-        doc.write_bracket(self.left)
+    def visit(self, visitor):
+        visitor.visit_bracket(self.left)
 
 
 # brace: {}
@@ -296,8 +296,8 @@ class Br(Expression):
     def calc(self):
         return self.left.calc()
 
-    def write_to(self, doc):
-        doc.write_brace(self.left)
+    def visit(self, visitor):
+        visitor.visit_brace(self.left)
 
 
 class Variable(Expression):
@@ -328,11 +328,11 @@ class Variable(Expression):
         else:
             return self.value
 
-    def write_to(self, doc):
+    def visit(self, visitor):
         if self.subscript is None:
-            doc.write_variable(self.symbol)
+            visitor.visit_variable(self.symbol)
         else:
-            doc.write_subscript_variable(Variable(self.symbol), Variable(self.subscript))
+            visitor.visit_subscript_variable(Variable(self.symbol), Variable(self.subscript))
 
 
 class Constant(Variable):
@@ -357,8 +357,8 @@ class Unit(Variable):
     def __init__(self, symbol):
         super().__init__(symbol)
 
-    def write_to(self, writer):
-        writer.write_unit(self.symbol)
+    def visit(self, visitor):
+        visitor.visit_unit(self.symbol)
 
 
 V = Variable
