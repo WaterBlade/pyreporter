@@ -124,6 +124,14 @@ class Div(Expression):
         visitor.visit_div(self.left, self.right)
 
 
+class FlatDiv(Expression):
+    def calc(self):
+        return self.left.calc() / self.right.calc()
+
+    def visit(self, visitor):
+        visitor.visit_flat_div(self.left, self.right)
+
+
 class Pow(Expression):
     def calc(self):
         return math.pow(self.left.calc(), self.right.calc())
@@ -333,6 +341,16 @@ class Variable(Expression):
             visitor.visit_variable(self.symbol)
         else:
             visitor.visit_subscript_variable(Variable(self.symbol), Variable(self.subscript))
+
+
+class FractionVariable(Variable):
+    def __init__(self, symbol, subscript, num, den):
+        super().__init__(symbol=symbol, subscript=subscript)
+        self.num = num
+        self.den = den
+
+    def copy_result(self):
+        return Number(self.num, precision=0) / Number(self.den, precision=0)
 
 
 class Constant(Variable):
