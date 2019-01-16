@@ -1,17 +1,18 @@
-from pyreporter import (Report,
-                        Formula, PiecewiseFormula,
-                        Calculator, TrailSolver)
-from pyreporter import calculator as exp
+from pyreporter.expression import (Formula, PiecewiseFormula,
+                                   Calculator, TrailSolver,
+                                   Variable, FractionVariable, Unit, Constant, Number, FlatDiv)
+from pyreporter.re_reporter import Report, DefaultCover
 
-V = exp.Variable
-U = exp.Unit
-C = exp.Constant
-N = exp.Number
+V = Variable
+FV = FractionVariable
+U = Unit
+C = Constant
+N = Number
 
-Q = V('Q', inform='渡槽的过水流量', unit=exp.FlatDiv(U('m')**3,U('s')), precision=3)
+Q = V('Q', inform='渡槽的过水流量', unit=FlatDiv(U('m')**3,U('s')), precision=3)
 A = V('A', inform='槽身过水断面闽面积', unit=U('m')**2, precision=3)
 R = V('R', inform='水力半径', unit=U('m'), precision=3)
-i = V('i', inform='槽底比降', precision=5)
+i = FV('i', inform='槽底比降')
 n = V('n', inform='槽身过水断面的槽壁糙率', precision=3)
 chi = V('χ', inform='湿周', unit=U('m'), precision=3)
 
@@ -49,11 +50,12 @@ if __name__ == '__main__':
     print(solver.solve(12))
     ret2 = solver.get_procedure()
     rep = Report()
-    rep.set_default_cover()
+    rep.set_cover(DefaultCover())
     rep.add_heading('计算公式', 1)
-    rep.add_math_definition(calc.get_definition())
-    rep.add_symbol_note(calc.get_symbol_note())
-    # rep.add_heading('计算过程', 1)
-    # rep.add_math_procedure(ret1)
-    # rep.add_math_procedure(ret2)
+    rep.add(calc.get_definition())
+    rep.add(calc.get_note())
+    rep.add_heading('计算过程', 1)
+    rep.add(ret1)
+    rep.add(ret2)
+    rep.add_paragraph('有计算可知，试算得到的水深', h.get_evaluation())
     rep.save('hydro_demo.docx')

@@ -23,4 +23,4 @@ def test_variable_list():
     v2 = V('v2')
     v3 = V('v3')
     exp = v1 + v2 + v3
-    assert exp.get_variable_list() == [v1, v2, v3]
+    assert exp.get_variable_dict() == [v1, v2, v3]

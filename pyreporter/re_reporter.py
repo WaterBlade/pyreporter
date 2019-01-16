@@ -8,7 +8,7 @@ import weakref
 class Report:
     def __init__(self):
         self.cover = None
-        self.header = _Header()
+        self.header = None
         self.block = Block()
         self.writer = DocX()
 
@@ -21,15 +21,19 @@ class Report:
     def set_cover(self, cover):
         self.cover = cover
 
-    def set_header(self, header):
+    def set_header(self, header: str):
         self.header = _Header(header)
 
     def save(self, path):
         if self.cover is not None:
-            self.cover.visit(self.writer)
-        self.header.visit(self.writer)
+            self.writer.set_cover(self.cover)
+        if self.header is not None:
+            self.header.visit(self.writer)
         self.block.visit(self.writer)
         self.writer.save(path)
+
+    def add_heading(self, heading: str, level: int):
+        self.add(Heading(heading, level))
 
     def add_paragraph(self, *items):
         self.add(Paragraph(*items))
@@ -37,11 +41,23 @@ class Report:
     def add_math(self, math_content):
         self.add(Math(math_content))
 
+    def add_definition(self, math_content):
+        m = MathDefinition(math_content)
+        self.add(m)
+        return m.reference
+
+    def add_note(self, var_list):
+        self.add(MathNote(var_list))
+
     def add_figure(self, file, height=None, title=None):
-        self.add(Figure(file, height=height, title=title))
+        fig = Figure(file, height=height, title=title)
+        self.add(fig)
+        return fig.reference
 
     def add_table(self, content_by_rows, title=None):
-        self.add(Table(content_by_rows, title))
+        tab = Table(content_by_rows, title)
+        self.add(tab)
+        return tab.reference
 
 
 class ReportElement:
@@ -62,6 +78,9 @@ class Block:
         else:
             self._element_list.append(element)
 
+    def add_heading(self, heading: str, level: int):
+        self.add(Heading(heading, level))
+
     def add_paragraph(self, *items):
         self.add(Paragraph(*items))
 
@@ -69,10 +88,14 @@ class Block:
         self.add(Math(math_content))
 
     def add_figure(self, file, height=None, title=None):
-        self.add(Figure(file, height=height, title=title))
+        fig = Figure(file, height=height, title=title)
+        self.add(fig)
+        return fig.reference
 
     def add_table(self, content_by_rows, title=None):
-        self.add(Table(content_by_rows, title))
+        tab = Table(content_by_rows, title)
+        self.add(tab)
+        return tab.reference
 
     def visit(self, visitor):
         for element in self._element_list:
@@ -98,6 +121,8 @@ class Content(ContentElement):
     def add(self, element):
         if isinstance(element, str):
             element = Text(element)
+        elif isinstance(element, MathObject):
+            element = InlineMath(element)
 
         assert isinstance(element, ContentElement)
 
@@ -107,8 +132,11 @@ class Content(ContentElement):
             self._element_list.append(element)
 
     def visit(self, visitor):
-        for element in self._element_list:
-            element.visit(visitor)
+        return visitor.visit_content(self._element_list)
+
+
+class MathObject(ContentElement):
+    pass
 
 
 class Text(ContentElement):
@@ -122,12 +150,12 @@ class Text(ContentElement):
         self.underline = underline
 
     def visit(self, visitor):
-        visitor.visit_text(text=self.text,
-                           font=self.font,
-                           size=self.size,
-                           italic=self.italic,
-                           bold=self.bold,
-                           underline=self.underline)
+        return visitor.visit_text(text=self.text,
+                                  font=self.font,
+                                  size=self.size,
+                                  italic=self.italic,
+                                  bold=self.bold,
+                                  underline=self.underline)
 
 
 class InlineMath(ContentElement):
@@ -135,7 +163,7 @@ class InlineMath(ContentElement):
         self.content = content
 
     def visit(self, visitor):
-        visitor.visit_inline_math(content=self.content)
+        return visitor.visit_inline_math(content=self.content)
 
 
 class InlineFigure(ContentElement):
@@ -147,19 +175,22 @@ class InlineFigure(ContentElement):
         format_ = self.figure.format_
         width = self.figure.width
         height = self.figure.height
-        visitor.visit_inline_figure(figure=figure,
-                                    format_=format_,
-                                    width=width,
-                                    height=height)
+        return visitor.visit_inline_figure(figure=figure,
+                                           format_=format_,
+                                           width=width,
+                                           height=height)
 
 
 class Bookmark(ContentElement):
-    def __init__(self, type_):
+    def __init__(self, type_, left=None, right=None):
         self.type_ = type_
         self.reference = Reference(self)
+        self.left = left
+        self.right = right
 
     def visit(self, visitor):
-        visitor.visit_bookmark(self.type_, self)
+        return visitor.visit_bookmark(type_=self.type_, bookmark=self,
+                                      left=self.left, right=self.right)
 
 
 class Reference(ContentElement):
@@ -167,7 +198,7 @@ class Reference(ContentElement):
         self.bookmark = bookmark
 
     def visit(self, visitor):
-        visitor.visit_reference(self.bookmark)
+        return visitor.visit_reference(self.bookmark)
 
 
 class Footnote(ContentElement):
@@ -175,18 +206,18 @@ class Footnote(ContentElement):
         self.content = Content(*items)
 
     def visit(self, visitor):
-        visitor.visit_footnote(self.content)
+        return visitor.visit_footnote(self.content)
 
 
 class Heading(Context):
     def __init__(self, heading: str, level=1):
-        self.content = Content(heading)
+        self.content = heading
         self.level = level
 
     def visit(self, visitor):
-        visitor.visit_heading(content=self.content,
-                              level=self.level,
-                              heading=self)
+        return visitor.visit_heading(content=self.content,
+                                     level=self.level,
+                                     heading=self)
 
 
 class Paragraph(Context):
@@ -205,10 +236,34 @@ class Math(Context):
         visitor.visit_math(content=self.content)
 
 
+class MathDefinition(Context):
+    def __init__(self, content):
+        self.content = content
+        self.bookmark = Bookmark('式', left='(', right=')')
+        self.reference = self.bookmark.reference
+
+    def visit(self, visitor):
+        visitor.visit_math_definition(content=self.content, bookmark=self.bookmark)
+
+
+class MathNote(Context):
+    def __init__(self, variable_list):
+        self._list = variable_list
+
+    def visit(self, visitor):
+        visitor.visit_math_note(self._list)
+
+
 class Figure(Context):
-    def __init__(self, file, height=None, title: Union[str, ContentElement]=None):
+    def __init__(self, file, height=None, title: Union[str, ContentElement] = None):
         self.figure = _FigureContent(file, height)
-        self.title = Content(title)
+
+        self.reference = None
+        if title is not None:
+            mark = Bookmark('图')
+            self.reference = mark.reference
+            title = Content(mark, title)
+        self.title = title
 
     def visit(self, visitor):
         figure = self.figure.figure
@@ -225,27 +280,49 @@ class Figure(Context):
 
 class Table(Context):
     def __init__(self, content_by_rows: List[List[ContentElement]],
-                 title: Union[str, ContentElement]=None):
+                 title: Union[str, ContentElement] = None):
         self.content_by_rows = list()
         for r in content_by_rows:
             row = list()
             for c in r:
                 row.append(Content(c))
             self.content_by_rows.append(row)
-        self.title = Content(title)
+
+        self.reference = None
+        if title is not None:
+            mark = Bookmark('表')
+            self.reference = mark.reference
+            title = Content(mark, title)
+        self.title = title
 
     def visit(self, visitor):
         visitor.visit_table(content_by_rows=self.content_by_rows,
                             title=self.title)
 
 
-class _Cover(ReportElement):
+class DefaultCover(ReportElement):
+    def __init__(self, project='**工程', name='**计算书',
+                 part='**专业', phase='**阶段',
+                 number='', secret='',
+                 footer_str='湖南省水利水电勘测设计研究总院'):
+        self.type_ = 'default cover'
+        self.project = project
+        self.name = name
+        self.part = part
+        self.phase = phase
+        self.number = number
+        self.secret = secret
+        self.footer_str = footer_str
+
     def visit(self, visitor):
-        visitor.visit_cover(self)
+        visitor.visit_cover(project=self.project, name=self.name,
+                            part=self.part, phase=self.phase,
+                            number=self.number, secret=self.secret,
+                            footer_str=self.footer_str)
 
 
 class _Header(ReportElement):
-    def __init__(self, header: str='计算书'):
+    def __init__(self, header: str):
         self.header = header
 
     def visit(self, visitor):

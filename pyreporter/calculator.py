@@ -83,10 +83,10 @@ class PiecewiseFormula(FormulaBase):
     def get_variable_list(self):
         s = [self.variable]
         for exp, cond in zip(self.expression_list, self.condition_list):
-            for var in exp.get_variable_list():
+            for var in exp.get_variable_dict():
                 if not has_contained(s, var):
                     s.append(var)
-            for var in cond.get_variable_list():
+            for var in cond.get_variable_dict():
                 if not has_contained(s, var):
                     s.append(var)
         return s
@@ -143,7 +143,7 @@ class Calculator:
     def get_variable_list(self):
         s = list()
         for formula in self.formula_list:
-            for var in formula.get_variable_list():
+            for var in formula.get_variable_dict():
                 if not has_contained(s, var):
                     s.append(var)
         return s
