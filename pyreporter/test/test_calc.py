@@ -1,4 +1,4 @@
-from ..calculator import Variable, Number
+from ..expression import Variable, Number
 
 V = Variable
 C = Number

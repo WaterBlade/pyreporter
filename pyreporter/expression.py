@@ -16,7 +16,7 @@ def wrapper_number(number):
         return number
 
 
-class Expression:
+class Expression(MathObject):
     def __init__(self, left=None, right=None):
         self.left = wrapper_number(left)
         self.right = wrapper_number(right)
@@ -384,7 +384,7 @@ class Unit(Variable):
         return visitor.visit_unit(self.symbol)
 
 
-class MathText:
+class MathText(MathObject):
     def __init__(self, text):
         self.text = text
 
