@@ -1,5 +1,5 @@
-from pyreporter.re_reporter import Report, DefaultCover, Footnote, InlineFigure
-from pyreporter import expression as exp
+from pyreporter.reporter import Report, DefaultCover, Footnote, Figure
+from pyreporter import calculator as exp
 
 V = exp.Variable
 
@@ -14,5 +14,5 @@ if __name__ == '__main__':
     ref1 = doc.add_definition(V('a')+V('b'))
     ref = doc.add_table([['1', '2', '3'],
                    ['4', '5', '6']], title='123')
-    doc.add_paragraph('abcdefg', Footnote('hijklmn'), '见', ref, InlineFigure('桌面.PNG', height=1))
+    doc.add_paragraph('abcdefg', Footnote('hijklmn'), '见', ref, Figure('桌面.PNG', height=1))
     doc.save('re_hello.docx')

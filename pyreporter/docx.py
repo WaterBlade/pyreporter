@@ -2,6 +2,8 @@ from xml.etree.ElementTree import tostring, Element
 from zipfile import ZipFile, ZIP_DEFLATED
 from collections import namedtuple
 
+__all__ = ['DocX']
+
 DataFile = namedtuple('DataFile', 'path xml')
 FigureFile = namedtuple('FigureFile', 'path figure')
 Id = namedtuple('Id', 'number text')
@@ -10,13 +12,16 @@ TEXT_SIZE = {'normal': 12, 'large': 18, 'small': 8}
 PAGE_WIDTH = 8200
 MIN_TABLE_CELL_WIDTH = 1600
 
-# visitor will return list of element
+# visitor will return list of element.
+# not all visitor will return.
+# only the Content class visitor will return.
 
 
 def make_element(tag, *items) -> Element:
     ele = Element(tag)
     last_ele = None
     for item in items:
+        assert not isinstance(item, bool)
         if isinstance(item, Element):
             ele.append(item)
             last_ele = item
@@ -272,7 +277,7 @@ class DocX:
         self._add_xml(path='word/numbering.xml', xml=xml)
 
     def _build_settings(self):
-        xml = """<w:settings xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:sl="http://schemas.openxmlformats.org/schemaLibrary/2006/main"><w:zoom w:percent="160"/><w:bordersDoNotSurroundHeader/><w:bordersDoNotSurroundFooter/><w:defaultTabStop w:val="420"/><w:drawingGridVerticalSpacing w:val="156"/><w:displayHorizontalDrawingGridEvery w:val="0"/><w:displayVerticalDrawingGridEvery w:val="2"/><w:characterSpacingControl w:val="compressPunctuation"/><w:hdrShapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/></w:hdrShapeDefaults><w:footnotePr><w:footnote w:id="0"/><w:footnote w:id="1"/></w:footnotePr><w:endnotePr><w:endnote w:id="0"/><w:endnote w:id="1"/></w:endnotePr><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:doNotExpandShiftReturn/><w:adjustLineHeightInTable/><w:useFELayout/></w:compat><w:rsids><w:rsidRoot w:val="003221F4"/><w:rsid w:val="0023729F"/><w:rsid w:val="003221F4"/><w:rsid w:val="00581F8C"/><w:rsid w:val="005B06A3"/><w:rsid w:val="00626EC2"/><w:rsid w:val="006A65DB"/><w:rsid w:val="006E593F"/><w:rsid w:val="00926F4A"/><w:rsid w:val="00971FF4"/><w:rsid w:val="00A805B6"/><w:rsid w:val="00C501FC"/><w:rsid w:val="00D637A7"/></w:rsids><m:mathPr><m:mathFont m:val="Cambria Math"/><m:brkBin m:val="before"/><m:brkBinSub m:val="--"/><m:smallFrac m:val="off"/><m:dispDef/><m:lMargin m:val="0"/><m:rMargin m:val="0"/><m:defJc m:val="centerGroup"/><m:wrapIndent m:val="1440"/><m:intLim m:val="subSup"/><m:naryLim m:val="undOvr"/></m:mathPr><w:themeFontLang w:val="en-US" w:eastAsia="zh-CN"/><w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:bg2="light2" w:t2="dark2" w:accent1="accent1" w:accent2="accent2" w:accent3="accent3" w:accent4="accent4" w:accent5="accent5" w:accent6="accent6" w:hyperlink="hyperlink" w:followedHyperlink="followedHyperlink"/><w:shapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout></w:shapeDefaults><w:decimalSymbol w:val="."/><w:listSeparator w:val=","/></w:settings>"""
+        xml = """<w:settings xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:sl="http://schemas.openxmlformats.org/schemaLibrary/2006/main"><w:zoom w:percent="160"/><w:bordersDoNotSurroundHeader/><w:bordersDoNotSurroundFooter/><w:defaultTabStop w:val="420"/><w:drawingGridVerticalSpacing w:val="156"/><w:displayHorizontalDrawingGridEvery w:val="0"/><w:displayVerticalDrawingGridEvery w:val="2"/><w:characterSpacingControl w:val="compressPunctuation"/><w:hdrShapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/></w:hdrShapeDefaults><w:footnotePr><w:footnote w:id="0"/><w:footnote w:id="1"/></w:footnotePr><w:endnotePr><w:endnote w:id="0"/><w:endnote w:id="1"/></w:endnotePr><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:doNotExpandShiftReturn/><w:adjustLineHeightInTable/><w:useFELayout/></w:compat><w:rsids><w:rsidRoot w:val="003221F4"/><w:rsid w:val="0023729F"/><w:rsid w:val="003221F4"/><w:rsid w:val="00581F8C"/><w:rsid w:val="005B06A3"/><w:rsid w:val="00626EC2"/><w:rsid w:val="006A65DB"/><w:rsid w:val="006E593F"/><w:rsid w:val="00926F4A"/><w:rsid w:val="00971FF4"/><w:rsid w:val="00A805B6"/><w:rsid w:val="00C501FC"/><w:rsid w:val="00D637A7"/></w:rsids><m:mathPr><m:mathFont m:val="Cambria Math"/><m:brkBin m:val="before"/><m:brkBinSub m:val="--"/><m:smallFrac m:val="off"/><m:dispDef/><m:lMargin m:val="0"/><m:rMargin m:val="0"/><m:defJc m:val="centerGroup"/><m:wrapIndent m:val="720"/><m:intLim m:val="subSup"/><m:naryLim m:val="undOvr"/></m:mathPr><w:themeFontLang w:val="en-US" w:eastAsia="zh-CN"/><w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:bg2="light2" w:t2="dark2" w:accent1="accent1" w:accent2="accent2" w:accent3="accent3" w:accent4="accent4" w:accent5="accent5" w:accent6="accent6" w:hyperlink="hyperlink" w:followedHyperlink="followedHyperlink"/><w:shapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout></w:shapeDefaults><w:decimalSymbol w:val="."/><w:listSeparator w:val=","/></w:settings>"""
         self._add_xml(path='word/settings.xml', xml=xml)
 
     def _build_styles(self):
@@ -316,9 +321,9 @@ class DocX:
     # document.xml START
     # ---------------------------------------------------------------
 
-    def visit_content(self, elements):
+    def visit_composite(self, list_):
         ret = list()
-        for ele in elements:
+        for ele in list_:
             ret.extend(ele.visit(self))
         return ret
 
@@ -510,19 +515,26 @@ class DocX:
 
         para.extend(content.visit(self))
 
-    def visit_math(self, content):
+    def visit_standalone_math(self, content):
         para = E('w:p')
         self.body_elements.append(para)
 
         m_p = E('m:oMathPara')
         para.append(m_p)
 
-        m = E('m:oMath')
-        m_p.append(m)
-
-        m.extend(content.visit(self))
+        for i in range(len(content)):
+            m = content[i].visit(self)[0]
+            m_p.append(m)
+            if i != len(content) - 1:
+                m_p.append(E('w:r', E('w:br')))
 
     def visit_math_definition(self, content, bookmark):
+        m_p = E('m:oMathPara')
+        for i in range(len(content)):
+            m = content[i].visit(self)[0]
+            m_p.append(m)
+            if i != len(content) - 1:
+                m_p.append(E('w:r', E('w:br')))
         tb = E('w:tbl',
                E('w:tblPr',
                  E('w:jc', {'w:val': 'center'}),
@@ -535,8 +547,7 @@ class DocX:
                    E('w:tcPr', E('w:vAlign', {'w:val': 'center'})),
                    E('w:p',
                      E('w:pPr', E('w:jc', {'w:val': 'center'})),
-                     E('m:oMathPara',
-                       E('m:oMath', content.visit(self))))),
+                     m_p)),
                  E('w:tc',
                    E('w:tcPr', E('w:vAlign', {'w:val': 'center'})),
                    E('w:p',
@@ -545,7 +556,19 @@ class DocX:
                  ))
         self.body_elements.append(tb)
 
+    def visit_math_procedure(self, content):
+        p = E('w:p')
+        m_p = E('m:oMathPara')
+        p.append(m_p)
+        for i in range(len(content)):
+            m = content[i].visit(self)[0]
+            m_p.append(m)
+            if i != len(content) - 1:
+                m_p.append(E('w:r', E('w:br')))
+        self.body_elements.append(p)
+
     def visit_math_note(self, var_list):
+        self.body_elements.append(E('w:p', E('w:r', E('w:t', '式中：'))))
         for var in var_list:
             p = E('w:p')
             self.body_elements.append(p)
@@ -691,6 +714,10 @@ class DocX:
     # math START
     # ---------------------------------------------------------------
 
+    def visit_negative(self, exp):
+        return [self._make_m_r('-', sty='p'),
+                *exp.visit(self)]
+
     def visit_add(self, left, right):
         return [*left.visit(self),
                 self._make_m_r('+', sty='p'),
@@ -718,10 +745,12 @@ class DocX:
         return self.visit_div(left, right, type_='lin')
 
     def visit_pow(self, exp, index):
+        ret_exp = exp.visit(self)
+        if ret_exp[0].tag == 'm:sSub':
+            ret_exp[0].tag = 'm:sSubSup'
+            ret_exp[0].append(E('m:sup', index.visit(self)))
+            return ret_exp
         return [self._make_m_sSup(exp, index)]
-
-    def visit_pow_with_sub(self, exp, sub, index):
-        return [self._make_m_sSubSup(exp, sub, index)]
 
     def visit_radical(self, exp, index):
         rad = E('m:rad')
@@ -793,23 +822,36 @@ class DocX:
     def visit_parenthesis(self, exp):
         return [self._make_m_d(exp, left='(', right=')')]
 
-    def write_square_bracket(self, exp):
+    def visit_square_bracket(self, exp):
         return [self._make_m_d(exp, left='[', right=']')]
 
     def visit_brace(self, exp):
         return [self._make_m_d(exp, left='{', right='}')]
 
-    def visit_variable(self, var):
-        return [self._make_m_r(var)]
-
-    def visit_subscript_variable(self, base, sub):
-        return [self._make_m_sSup(base, sub)]
+    def visit_variable(self, var, sub):
+        if sub is None:
+            return [self._make_m_r(var)]
+        else:
+            return [self._make_m_sSub(var, sub)]
 
     def visit_unit(self, symbol):
         return [self._make_m_r(symbol, sty='p')]
 
-    def visit_math_text(self, text):
-        return [self._make_m_r(text)]
+    def visit_serial_variable(self, var, sub, index):
+        if sub is None:
+            return [self._make_m_sSub(var, f'{index}')]
+        elif isinstance(sub, str):
+            return [self._make_m_sSub(var, sub+f'-{index}')]
+        else:
+            E('m:sSub',
+              E('m:e', self._make_m_r(var)),
+              E('m:sub', sub.visit(self), self._make_m_r(f'-{index}')))
+
+    def visit_math_text(self, text, align):
+        return [self._make_m_r(text, align=align)]
+
+    def visit_math_align_text(self, text):
+        return [self._make_m_r(text, align=True)]
 
     def visit_math_line(self, list_):
         ret = list()
@@ -830,26 +872,34 @@ class DocX:
         else:
             raise TypeError('Unknown included type: %s in math multi line' % included)
 
-    def _make_m_r(self, text, sty=None):
+    def _make_m_r(self, text, *, sty=None, align=False):
         run = E('m:r')
-        if sty:
-            run.append(E('m:rPr', E('m:sty', {'m:val': sty})))
+        if sty or align:
+            pr = E('m:rPr')
+            run.append(pr)
+            if sty:
+                pr.append(E('m:sty', {'m:val': sty}))
+            if align:
+                pr.append(E('m:aln'))
         run.append(E('w:rPr',
                      E('w:rFonts', {'w:ascii': 'Cambria Math',
                                     'w:hAnsi': 'Cambria Math'})))
         run.append(E('m:t', text))
         return run
 
-    def _make_m_sSup(self, base, sup):
-        return E('m:sSup',
-                 E('m:e', base.visit(self)),
-                 E('m:sup', sup.visit(self)))
+    def _make_m_sSub(self, base, sub):
+        base = self._make_m_r(base) if isinstance(base, str) else base.visit(self)
+        sub = self._make_m_r(sub) if isinstance(sub, str) else sub.visit(self)
+        return E('m:sSub',
+                 E('m:e', base),
+                 E('m:sub', sub))
 
-    def _make_m_sSubSup(self, base, sub, sup):
-        return E('m:sSubSup',
-                 E('m:e', base.visit(self)),
-                 E('m:sub', sub.visit(self)),
-                 E('m:sup', sup.visit(self)))
+    def _make_m_sSup(self, base, sup):
+        base = self._make_m_r(base) if isinstance(base, str) else base.visit(self)
+        sup = self._make_m_r(sup) if isinstance(sup, str) else sup.visit(self)
+        return E('m:sSup',
+                 E('m:e', base),
+                 E('m:sup', sup))
 
     def _make_m_func(self, name, exp):
         return E('m:func',
@@ -908,16 +958,16 @@ class DefaultCover(Cover):
     def visit_cover(self, *, project, name, part, phase, number, secret, footer_str):
         tree = self.elements
 
-        c1 = self._make_enclosed_cell('编号')
-        c2 = self._make_enclosed_cell(number)
+        c1 = self._make_enclosed_cell('秘密')
+        c2 = self._make_enclosed_cell(secret)
         tree.append(self._make_table([[c1, c2]],
                                      grid_col=[600, 2000],
                                      x_spec='left', y_spec='top',
                                      top_margin=0, bottom_margin=0,
                                      left_margin=0, right_margin=0))
 
-        c1 = self._make_enclosed_cell('秘密')
-        c2 = self._make_enclosed_cell(secret)
+        c1 = self._make_enclosed_cell('编号')
+        c2 = self._make_enclosed_cell(number)
         tree.append(self._make_table([[c1, c2]],
                                      grid_col=[600, 2000],
                                      x_spec='right', y_spec='top',

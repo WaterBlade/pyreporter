@@ -1,22 +1,21 @@
 import math
 from typing import List
 from collections import OrderedDict
-from .re_reporter import Math, MathDefinition, MathNote, MathObject
+
+__all__ = ['Variable', 'FractionVariable', 'Number', 'Unit',
+           'Formula', 'PiecewiseFormula', 'Calculator', 'TrailSolver',
+           'FlatDiv', 'Sin', 'ASin', 'Cos', 'ACos', 'Tan', 'ATan', 'Cot', 'ACot',
+           'Radical', 'Pr', 'Sq', 'Br']
 
 
 def wrapper_number(number):
-    if isinstance(number, float):
-        i = 0
-        while number < 10*i:
-            i -= 1
-        return Number(number, precision=abs(i) + 3)
-    elif isinstance(number, int):
-        return Number(number, precision=0)
+    if isinstance(number, float) or isinstance(number, int):
+        return Number(number)
     else:
         return number
 
 
-class Expression(MathObject):
+class Expression:
     def __init__(self, left=None, right=None):
         self.left = wrapper_number(left)
         self.right = wrapper_number(right)
@@ -37,11 +36,14 @@ class Expression(MathObject):
     def visit(self, visitor):
         pass
 
-    def get_variable_dict(self)->OrderedDict:
+    def get_variable_dict(self) -> OrderedDict:
         d = self.left.get_variable_dict()
         if self.right is not None:
             d.update(self.right.get_variable_dict())
         return d
+
+    def __neg__(self):
+        return Negative(self)
 
     def __add__(self, other):
         return Add(self, other)
@@ -92,6 +94,14 @@ class Expression(MathObject):
         return GreaterOrEqual(self, other)
 
 
+class Negative(Expression):
+    def calc(self):
+        return - self.left.calc()
+
+    def visit(self, visitor):
+        return visitor.visit_negative(self.left)
+
+
 class Add(Expression):
     def calc(self):
         return self.left.calc() + self.right.calc()
@@ -137,12 +147,7 @@ class Pow(Expression):
         return math.pow(self.left.calc(), self.right.calc())
 
     def visit(self, visitor):
-        if isinstance(self.left, Variable) and self.left.subscript is not None:
-            left = self.left.copy()
-            left.subscript = None
-            return visitor.visit_pow_with_sub(left, Variable(self.left.subscript), self.right)
-        else:
-            return visitor.visit_pow(self.left, self.right)
+        return visitor.visit_pow(self.left, self.right)
 
 
 class Radical(Expression):
@@ -296,7 +301,7 @@ class Sq(Expression):
         return self.left.calc()
 
     def visit(self, visitor):
-        return visitor.visit_bracket(self.left)
+        return visitor.visit_square_bracket(self.left)
 
 
 # brace: {}
@@ -309,7 +314,7 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2, inform=None):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=None, inform=None):
         super().__init__()
         self.symbol = symbol
         self.value = value
@@ -318,8 +323,14 @@ class Variable(Expression):
         self.unit = unit
         self.inform = inform
 
+    def __repr__(self):
+        if self.subscript is None:
+            return f'{self.symbol}'
+        else:
+            return f'{self.symbol}-{self.subscript}'
+
     def __hash__(self):
-        return hash(self.symbol)
+        return id(self)
 
     def get_variable_dict(self):
         return OrderedDict({id(self): self})
@@ -330,12 +341,6 @@ class Variable(Expression):
     def copy_result(self):
         return Number(self.value, self.precision)
 
-    def get_evaluation(self):
-        if self.unit is None:
-            return MathLine(self.copy(), '=', self.copy_result())
-        else:
-            return MathLine(self.copy(), '=', self.copy_result(), self.unit)
-
     def calc(self):
         if self.value is None:
             raise ValueError(f'Variable {self.symbol} has no value!')
@@ -343,10 +348,7 @@ class Variable(Expression):
             return self.value
 
     def visit(self, visitor):
-        if self.subscript is None:
-            return visitor.visit_variable(self.symbol)
-        else:
-            return visitor.visit_subscript_variable(Variable(self.symbol), Variable(self.subscript))
+        return visitor.visit_variable(self.symbol, self.subscript)
 
 
 class FractionVariable(Variable):
@@ -358,19 +360,14 @@ class FractionVariable(Variable):
         return 1 / Number(den, precision=0)
 
 
-class Constant(Variable):
-    def __init__(self, symbol, subscript=None, value=0, precision=2):
-        super().__init__(symbol, subscript, value, precision)
-
-
 class Number(Variable):
-    def __init__(self, value, precision=0):
-        if precision == 0:
-            data = '%d' % value
+    def __init__(self, value, precision=None):
+        if precision is None:
+            data = f'{value}'
         else:
             fmt = f'%.{precision}f'
             data = fmt % value
-        super().__init__(data, value=value, precision=precision)
+        super().__init__(data, value=value)
 
     def get_variable_dict(self):
         return OrderedDict()
@@ -384,47 +381,77 @@ class Unit(Variable):
         return visitor.visit_unit(self.symbol)
 
 
-class MathText(MathObject):
-    def __init__(self, text):
-        self.text = text
+class Sum(Expression):
+    def __init__(self, exp, serial_variable_list: list):
+        super().__init__(exp)
+        for serial in serial_variable_list[1:]:
+            assert len(serial) == len(serial_variable_list[0])
+        self.serial_variable_list = serial_variable_list
+        self.serial_length = len(serial_variable_list[0])
+        self.expanded = None
+
+    def calc(self):
+        ret = 0
+        for i in range(self.serial_length):
+            for var in self.serial_variable_list:
+                var.set_current(i)
+            ret += self.left.calc()
+        return ret
+
+    def copy_result(self):
+        ret = None
+        for i in range(self.serial_length):
+            for var in self.serial_variable_list:
+                var.set_current(i)
+            if ret is None:
+                ret = self.left.copy_result()
+            else:
+                ret += self.left.copy_result()
+        return ret
+
+
+class SerialVariable(Variable):
+    def __init__(self, symbol, subscript=None, value=None, index='i', unit=None, precision=2, inform=None):
+        super().__init__(symbol=symbol, subscript=subscript, value=value,
+                         unit=unit, precision=precision, inform=inform)
+        self.index = index
+        self._variable_list = list()
+        self._curr = None
+
+    def new(self):
+        index = len(self._variable_list) + 1
+        v = VariableInSerial(serial=self, symbol=self.symbol, subscript=self.subscript,
+                             index=index, unit=self.unit, precision=self.precision)
+        self._variable_list.append(v)
+        return v
+
+    def __getitem__(self, item):
+        return self._variable_list[item]
+
+    def calc(self):
+        return self._curr.calc()
+
+    def set_current(self, index):
+        self._curr = self._variable_list[index]
+
+    def copy_result(self):
+        return self._curr.copy_result()
 
     def visit(self, visitor):
-        return visitor.visit_math_text(self.text)
+        visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
 
 
-class MathLine(MathObject):
-    def __init__(self, *items):
-        self._list = list()
-        for item in items:
-            self.add(item)
+class VariableInSerial(Variable):
+    def __init__(self, *, serial, symbol, subscript, index, unit, precision):
+        self.root = serial
+        self.index = index
+        super().__init__(symbol=symbol, subscript=subscript, unit=unit, precision=precision)
 
-    def add(self, item):
-        if isinstance(item, str):
-            self._list.append(MathText(item))
-        elif isinstance(item, Expression):
-            self._list.append(item)
-        else:
-            raise TypeError('Unknown math type % s' % type(item))
+    def get_variable_dict(self):
+        return self.root.get_variable_dict()
 
     def visit(self, visitor):
-        return visitor.visit_math_line(self._list)
-
-
-class MultiLine(MathObject):
-    def __init__(self, *exps, included: str=None):
-        self._list = list()
-        for exp in exps:
-            self.add(exp)
-        self.included = included
-
-    def add(self, item):
-        if isinstance(item, MathLine):
-            self._list.append(item)
-        else:
-            raise TypeError('Unknown math type % s' % type(item))
-
-    def visit(self, visitor):
-        return visitor.visit_multi_line(self._list, self.included)
+        visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
 
 
 class FormulaBase:
@@ -439,89 +466,59 @@ class FormulaBase:
 
 
 class Formula(FormulaBase):
-    def __init__(self, var, expression):
+    def __init__(self, var, expression, long=False):
         self.variable = var  # type: Variable
         self.expression = expression  # type: Expression
+        self.long = long
 
     def calc(self):
         self.variable.value = self.expression.calc()
         return self.variable.value
 
-    def get_variable_dict(self):
-        d = OrderedDict({id(self.variable): self.variable})
-        d.update(self.expression.get_variable_dict())
-        return d
-
-    def get_definition(self):
-        return MathLine(self.variable, '&=', self.expression)
-
-    def get_procedure(self):
-        if self.variable.unit is not None:
-            return MathLine(self.variable,
-                            '&=', self.expression,
-                            '=', self.expression.copy_result(),
-                            '=', self.variable.copy_result(),
-                            self.variable.unit)
-        else:
-            return MathLine(self.variable,
-                            '&=', self.expression,
-                            '=', self.expression.copy_result(),
-                            '=', self.variable.copy_result())
+    def visit(self, visitor):
+        return visitor.visit_formula(self.variable, self.expression, self.long)
 
 
 class PiecewiseFormula(FormulaBase):
-    def __init__(self, var, expression_list, condition_list):
+    def __init__(self, var, expression_list, condition_list, long=False):
         self.variable = var  # type: Variable
         self.expression_list = expression_list  # type: List[Expression]
         self.condition_list = condition_list  # type: List[Expression]
 
+        self.long = long
+
         self.expression = None
-        self.condition = None
 
     def calc(self):
         for exp, cond in zip(self.expression_list, self.condition_list):
             if cond.calc():
                 self.variable.value = exp.calc()
                 self.expression = exp
-                self.condition = cond
                 return self.variable.value
         return None
 
-    def get_variable_dict(self):
-        d = OrderedDict({id(self): self})
-        for exp, cond in zip(self.expression_list, self.condition_list):
-            d.update(exp.get_variable_dict())
-            d.update(cond.get_variable_dict())
-        return d
+    def visit(self, visitor):
+        return visitor.visit_piecewise_formula(self.variable, self.expression,
+                                               self.expression_list, self.condition_list,
+                                               self.long)
 
-    def get_definition(self):
-        multi = MultiLine(included='left')
 
-        for exp, cond in zip(self.expression_list, self.condition_list):
-            multi.add(MathLine(exp, '&,', cond))
+class ConditionFormula(Formula):
+    def __init__(self, variable, expression, condition, long=False):
+        super().__init__(variable, expression, long)
+        self.condition = condition
 
-        return MathLine(self.variable, '&=', multi)
+    def calc(self):
+        if self.condition.calc():
+            return super().calc()
 
-    def get_procedure(self):
-        if self.variable.unit is not None:
-            return MathLine(self.variable,
-                            '&=', self.expression,
-                            '=', self.expression.copy_result(),
-                            '=', self.variable.copy_result(),
-                            self.variable.unit)
-        else:
-            return MathLine(self.variable,
-                            '&=', self.expression,
-                            '=', self.expression.copy_result(),
-                            '=', self.variable.copy_result())
+    def visit(self, visitor):
+        return visitor.visit_condition_formula(self.variable, self.expression, self.condition.calc(), self.long)
 
 
 class Calculator:
     def __init__(self):
         self.formula_list = list()  # type: List[Formula]
-
-    def get_target_variable(self):
-        return self.formula_list[0].variable
 
     def add(self, formula):
         self.formula_list.append(formula)
@@ -532,25 +529,18 @@ class Calculator:
 
         return self.formula_list[0].variable.value
 
-    def get_variable_dict(self):
-        d = OrderedDict()
-        for formula in self.formula_list:
-            d.update(formula.get_variable_dict())
-        return d
-
-    def get_definition(self):
-        return MathDefinition(MultiLine(*(formula.get_definition() for formula in self.formula_list)))
-
-    def get_procedure(self):
-        reversed = self.formula_list[::-1]
-        return Math(MultiLine(*(formula.get_procedure() for formula in reversed)))
-
-    def get_note(self):
-        d = self.get_variable_dict()
-        return MathNote(d.values())
+    def visit(self, visitor):
+        visitor.visit_calculator(self.formula_list)
 
 
 class TrailSolver(Calculator):
+    def __init__(self):
+        super().__init__()
+        self.unknown_variable = None
+
+    def get_target_variable(self):
+        return self.formula_list[0].variable
+
     def set_unknown(self, unknown_var):
         self.unknown_variable = unknown_var
 

@@ -1,8 +1,14 @@
-from .re_docx import DocX
+from .docx import DocX
 from PIL import Image
 from io import BytesIO
 from typing import Union, List
-import weakref
+from collections import OrderedDict
+
+
+__all__ = ['Report', 'DefaultCover',
+           'Block', 'StandaloneFigure', 'StandaloneMath',
+           'Definition', 'Procedure', 'Note', 'VariableValue',
+           'Figure', 'Math']
 
 
 class Report:
@@ -12,8 +18,14 @@ class Report:
         self.block = Block()
         self.writer = DocX()
 
+        self.symbol_set = set()
+
     def add(self, item):
         self.block.add(item)
+        if isinstance(item, Note):
+            item.remove_duplicate_note(self.symbol_set)
+        elif isinstance(item, Block):
+            item.remove_duplicate_note(self.symbol_set)
 
     def set_writer(self, writer):
         self.writer = writer
@@ -39,18 +51,10 @@ class Report:
         self.add(Paragraph(*items))
 
     def add_math(self, math_content):
-        self.add(Math(math_content))
-
-    def add_definition(self, math_content):
-        m = MathDefinition(math_content)
-        self.add(m)
-        return m.reference
-
-    def add_note(self, var_list):
-        self.add(MathNote(var_list))
+        self.add(StandaloneMath(math_content))
 
     def add_figure(self, file, height=None, title=None):
-        fig = Figure(file, height=height, title=title)
+        fig = StandaloneFigure(file, height=height, title=title)
         self.add(fig)
         return fig.reference
 
@@ -71,6 +75,11 @@ class Block:
         for item in items:
             self.add(item)
 
+    def remove_duplicate_note(self, symbol_set):
+        for item in self._element_list:
+            if isinstance(item, Note):
+                item.remove_duplicate_note(symbol_set)
+
     def add(self, element):
         assert isinstance(element, Context)
         if isinstance(element, Block):
@@ -85,10 +94,10 @@ class Block:
         self.add(Paragraph(*items))
 
     def add_math(self, math_content):
-        self.add(Math(math_content))
+        self.add(StandaloneMath(math_content))
 
     def add_figure(self, file, height=None, title=None):
-        fig = Figure(file, height=height, title=title)
+        fig = StandaloneFigure(file, height=height, title=title)
         self.add(fig)
         return fig.reference
 
@@ -102,7 +111,7 @@ class Block:
             element.visit(visitor)
 
 
-class ContentElement:
+class Content:
     def visit(self, visitor):
         pass
 
@@ -112,34 +121,38 @@ class Context:
         pass
 
 
-class Content(ContentElement):
+class Composite:
     def __init__(self, *items):
-        self._element_list = list()
+        self.list_ = list()
         for item in items:
-            self.add(item)
+            self.append(item)
 
-    def add(self, element):
-        if isinstance(element, str):
-            element = Text(element)
-        elif isinstance(element, MathObject):
-            element = InlineMath(element)
-
-        assert isinstance(element, ContentElement)
-
-        if isinstance(element, Content):
-            self._element_list.extend(element._element_list)
+    def append(self, item):
+        if isinstance(item, Composite):
+            self.list_.extend(item.list_)
         else:
-            self._element_list.append(element)
+            self.list_.append(item)
+
+    def extend(self, list_):
+        self.list_.extend(list_)
+
+    def __getitem__(self, index):
+        return self.list_[index]
+
+    def __setitem__(self, key, value):
+        self.list_[key] = value
+
+    def __len__(self):
+        return len(self.list_)
+
+    def __iter__(self):
+        return iter(self.list_)
 
     def visit(self, visitor):
-        return visitor.visit_content(self._element_list)
+        return visitor.visit_composite(self.list_)
 
 
-class MathObject(ContentElement):
-    pass
-
-
-class Text(ContentElement):
+class Text(Content):
     def __init__(self, text, font=None, size=None,
                  italic=False, bold=False, underline=False):
         self.text = text
@@ -158,15 +171,31 @@ class Text(ContentElement):
                                   underline=self.underline)
 
 
-class InlineMath(ContentElement):
-    def __init__(self, content):
+class Math(Content):
+    def __init__(self, *items):
+        content = Composite(*items)
+        for item in content:
+            assert not isinstance(item, str)
+            assert not isinstance(item, Context)
+            assert not isinstance(item, Content)
         self.content = content
+
+    def append(self, item):
+        self.content.append(item)
 
     def visit(self, visitor):
         return visitor.visit_inline_math(content=self.content)
 
 
-class InlineFigure(ContentElement):
+class VariableValue(Math):
+    def __init__(self, variable):
+        if variable.unit is None:
+            super().__init__(variable, _MathText('='), variable.copy_result())
+        else:
+            super().__init__(variable, _MathText('='), variable.copy_result(), variable.unit)
+
+
+class Figure(Content):
     def __init__(self, file, height=None):
         self.figure = _FigureContent(file, height)
 
@@ -181,7 +210,7 @@ class InlineFigure(ContentElement):
                                            height=height)
 
 
-class Bookmark(ContentElement):
+class Bookmark(Content):
     def __init__(self, type_, left=None, right=None):
         self.type_ = type_
         self.reference = Reference(self)
@@ -193,7 +222,7 @@ class Bookmark(ContentElement):
                                       left=self.left, right=self.right)
 
 
-class Reference(ContentElement):
+class Reference(Content):
     def __init__(self, bookmark: Bookmark):
         self.bookmark = bookmark
 
@@ -201,9 +230,13 @@ class Reference(ContentElement):
         return visitor.visit_reference(self.bookmark)
 
 
-class Footnote(ContentElement):
+class Footnote(Content):
     def __init__(self, *items):
-        self.content = Content(*items)
+        content = Composite(*items)
+        for item in content:
+            assert isinstance(item, Content)
+            assert not isinstance(item, Footnote)
+        self.content = content
 
     def visit(self, visitor):
         return visitor.visit_footnote(self.content)
@@ -221,48 +254,140 @@ class Heading(Context):
 
 
 class Paragraph(Context):
-    def __init__(self, *content: Union[str, ContentElement]):
-        self.content = Content(*content)
+    def __init__(self, *items):
+        content = Composite(*items)
+        for i in range(len(content)):
+            if isinstance(content[i], str):
+                content[i] = Text(content[i])
+            assert isinstance(content[i], Content)
+        self.content = content
 
     def visit(self, visitor):
         visitor.visit_paragraph(content=self.content)
 
 
-class Math(Context):
-    def __init__(self, content):
+class StandaloneMath(Context):
+    def __init__(self, *items):
+        content = Composite(*items)
+        for item in content:
+            assert isinstance(item, Math)
         self.content = content
 
     def visit(self, visitor):
-        visitor.visit_math(content=self.content)
+        visitor.visit_standalone_math(content=self.content)
 
 
-class MathDefinition(Context):
-    def __init__(self, content):
-        self.content = content
+class Definition(Context):
+    def __init__(self, formula_or_calculator):
+        self.content = Composite()
+        formula_or_calculator.visit(self)
+
         self.bookmark = Bookmark('式', left='(', right=')')
         self.reference = self.bookmark.reference
 
     def visit(self, visitor):
         visitor.visit_math_definition(content=self.content, bookmark=self.bookmark)
 
+    def visit_formula(self, variable, expression, long):
+        self.content.append(Math(variable, _MathText('=', align=True), expression))
 
-class MathNote(Context):
-    def __init__(self, variable_list):
-        self._list = variable_list
+    def visit_piecewise_formula(self, variable, expression, expression_list, condition_list, long):
+        multi = _MultiLine(included='left')
+
+        for exp, cond in zip(expression_list, condition_list):
+            multi.add(Composite(_MathText('&'), exp, _MathText('&,'), cond))
+
+        self.content.append(Math(variable, _MathText('=', align=True), multi))
+
+    def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
+        self.visit_formula(variable, expression, long)
+
+    def visit_calculator(self, formula_list):
+        for formula in formula_list:
+            formula.visit(self)
+
+
+class Procedure(Context):
+    def __init__(self, formula_or_calculator):
+        self.content = Composite()
+        formula_or_calculator.visit(self)
+
+    def visit(self, visitor):
+        visitor.visit_math_procedure(content=self.content)
+
+    def visit_formula(self, variable, expression, long: bool):
+        ret = list()
+
+        if long:
+            ret.append(Math(variable, _MathText('=', align=True), expression))
+            ret.append(Math(_MathText('=', align=True), expression.copy_result()))
+            ret.append(Math(_MathText('=', align=True), variable.copy_result()))
+        else:
+            ret.append(Math(variable,
+                            _MathText('=', align=True), expression,
+                            _MathText('='), expression.copy_result(),
+                            _MathText('='), variable.copy_result()))
+
+        if variable.unit is not None:
+            ret[-1].append(variable.unit)
+
+        self.content.extend(ret)
+
+    def visit_piecewise_formula(self, variable, expression, expression_list, condition_list, long: bool):
+        self.visit_formula(variable, expression, long)
+
+    def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
+        if condition:
+            self.visit_formula(variable, expression, long)
+
+    def visit_calculator(self, formula_list):
+        for formula in formula_list[::-1]:
+            formula.visit(self)
+
+
+class Note(Context):
+    def __init__(self, formula_or_calculator):
+        self._list = list()
+        self.variable_dict = OrderedDict()
+        formula_or_calculator.visit(self)
+
+    def remove_duplicate_note(self, var_set):
+        ret = list()
+        for var in self.variable_dict.values():
+            if var not in var_set:
+                ret.append(var)
+                var_set.add(var)
+        self._list = ret
 
     def visit(self, visitor):
         visitor.visit_math_note(self._list)
 
+    def visit_formula(self, variable, expression, long):
+        self.variable_dict.update(variable.get_variable_dict())
+        self.variable_dict.update(expression.get_variable_dict())
 
-class Figure(Context):
-    def __init__(self, file, height=None, title: Union[str, ContentElement] = None):
+    def visit_piecewise_formula(self, variable, expression, expression_list, condition_list, long):
+        self.visit_formula(variable, expression, long)
+
+    def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
+        self.visit_formula(variable, expression, long)
+
+    def visit_calculator(self, formula_list):
+        for formula in formula_list:
+            formula.visit(self)
+
+
+class StandaloneFigure(Context):
+    def __init__(self, file, height=None, title: Union[str, Content] = None):
         self.figure = _FigureContent(file, height)
 
         self.reference = None
         if title is not None:
             mark = Bookmark('图')
             self.reference = mark.reference
-            title = Content(mark, title)
+            title = Composite(mark, title)
+            for item in title:
+                assert isinstance(item, Content)
         self.title = title
 
     def visit(self, visitor):
@@ -279,20 +404,27 @@ class Figure(Context):
 
 
 class Table(Context):
-    def __init__(self, content_by_rows: List[List[ContentElement]],
-                 title: Union[str, ContentElement] = None):
+    def __init__(self, content_by_rows: List[List[Content]],
+                 title: Union[str, Content] = None):
         self.content_by_rows = list()
         for r in content_by_rows:
             row = list()
             for c in r:
-                row.append(Content(c))
+                if isinstance(c, str):
+                    c = Text(c)
+                elif isinstance(c, float) or isinstance(c, int):
+                    c = Text(f'{c}')
+                assert isinstance(c, Content)
+                row.append(c)
             self.content_by_rows.append(row)
 
         self.reference = None
         if title is not None:
             mark = Bookmark('表')
             self.reference = mark.reference
-            title = Content(mark, title)
+            title = Composite(mark, title)
+            for item in title:
+                assert isinstance(item, Content)
         self.title = title
 
     def visit(self, visitor):
@@ -347,3 +479,33 @@ class _FigureContent:
             height /= 25.4
             self.width *= (height / self.height)
             self.height = height
+
+
+class _MathText:
+    def __init__(self, text, align=False):
+        self.text = text
+        self.align = align
+
+    def visit(self, visitor):
+        return visitor.visit_math_text(self.text, align=self.align)
+
+
+class _MultiLine:
+    def __init__(self, *exps, included: str = None):
+        self._list = list()
+        for exp in exps:
+            self.add(exp)
+        self.included = included
+
+    def add(self, item):
+        if isinstance(item, Composite):
+            self._list.append(item)
+        else:
+            raise TypeError('Unknown math type % s' % type(item))
+
+    def visit(self, visitor):
+        return visitor.visit_multi_line(self._list, self.included)
+
+
+
+
