@@ -1,6 +1,7 @@
 from xml.etree.ElementTree import tostring, Element
 from zipfile import ZipFile, ZIP_DEFLATED
 from collections import namedtuple
+import math
 
 __all__ = ['DocX']
 
@@ -277,7 +278,7 @@ class DocX:
         self._add_xml(path='word/numbering.xml', xml=xml)
 
     def _build_settings(self):
-        xml = """<w:settings xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:sl="http://schemas.openxmlformats.org/schemaLibrary/2006/main"><w:zoom w:percent="160"/><w:bordersDoNotSurroundHeader/><w:bordersDoNotSurroundFooter/><w:defaultTabStop w:val="420"/><w:drawingGridVerticalSpacing w:val="156"/><w:displayHorizontalDrawingGridEvery w:val="0"/><w:displayVerticalDrawingGridEvery w:val="2"/><w:characterSpacingControl w:val="compressPunctuation"/><w:hdrShapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/></w:hdrShapeDefaults><w:footnotePr><w:footnote w:id="0"/><w:footnote w:id="1"/></w:footnotePr><w:endnotePr><w:endnote w:id="0"/><w:endnote w:id="1"/></w:endnotePr><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:doNotExpandShiftReturn/><w:adjustLineHeightInTable/><w:useFELayout/></w:compat><w:rsids><w:rsidRoot w:val="003221F4"/><w:rsid w:val="0023729F"/><w:rsid w:val="003221F4"/><w:rsid w:val="00581F8C"/><w:rsid w:val="005B06A3"/><w:rsid w:val="00626EC2"/><w:rsid w:val="006A65DB"/><w:rsid w:val="006E593F"/><w:rsid w:val="00926F4A"/><w:rsid w:val="00971FF4"/><w:rsid w:val="00A805B6"/><w:rsid w:val="00C501FC"/><w:rsid w:val="00D637A7"/></w:rsids><m:mathPr><m:mathFont m:val="Cambria Math"/><m:brkBin m:val="before"/><m:brkBinSub m:val="--"/><m:smallFrac m:val="off"/><m:dispDef/><m:lMargin m:val="0"/><m:rMargin m:val="0"/><m:defJc m:val="centerGroup"/><m:wrapIndent m:val="720"/><m:intLim m:val="subSup"/><m:naryLim m:val="undOvr"/></m:mathPr><w:themeFontLang w:val="en-US" w:eastAsia="zh-CN"/><w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:bg2="light2" w:t2="dark2" w:accent1="accent1" w:accent2="accent2" w:accent3="accent3" w:accent4="accent4" w:accent5="accent5" w:accent6="accent6" w:hyperlink="hyperlink" w:followedHyperlink="followedHyperlink"/><w:shapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout></w:shapeDefaults><w:decimalSymbol w:val="."/><w:listSeparator w:val=","/></w:settings>"""
+        xml = """<w:settings xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:sl="http://schemas.openxmlformats.org/schemaLibrary/2006/main"><w:zoom w:percent="160"/><w:bordersDoNotSurroundHeader/><w:bordersDoNotSurroundFooter/><w:defaultTabStop w:val="420"/><w:drawingGridVerticalSpacing w:val="156"/><w:displayHorizontalDrawingGridEvery w:val="0"/><w:displayVerticalDrawingGridEvery w:val="2"/><w:characterSpacingControl w:val="compressPunctuation"/><w:hdrShapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/></w:hdrShapeDefaults><w:footnotePr><w:footnote w:id="0"/><w:footnote w:id="1"/></w:footnotePr><w:endnotePr><w:endnote w:id="0"/><w:endnote w:id="1"/></w:endnotePr><w:compat><w:spaceForUL/><w:balanceSingleByteDoubleByteWidth/><w:doNotLeaveBackslashAlone/><w:ulTrailSpace/><w:doNotExpandShiftReturn/><w:adjustLineHeightInTable/><w:useFELayout/></w:compat><w:rsids><w:rsidRoot w:val="003221F4"/><w:rsid w:val="0023729F"/><w:rsid w:val="003221F4"/><w:rsid w:val="00581F8C"/><w:rsid w:val="005B06A3"/><w:rsid w:val="00626EC2"/><w:rsid w:val="006A65DB"/><w:rsid w:val="006E593F"/><w:rsid w:val="00926F4A"/><w:rsid w:val="00971FF4"/><w:rsid w:val="00A805B6"/><w:rsid w:val="00C501FC"/><w:rsid w:val="00D637A7"/></w:rsids><m:mathPr><m:mathFont m:val="Cambria Math"/><m:brkBin m:val="before"/><m:brkBinSub m:val="--"/><m:smallFrac m:val="off"/><m:dispDef/><m:lMargin m:val="0"/><m:rMargin m:val="0"/><m:defJc m:val="centerGroup"/><m:wrapIndent m:val="500"/><m:intLim m:val="subSup"/><m:naryLim m:val="undOvr"/></m:mathPr><w:themeFontLang w:val="en-US" w:eastAsia="zh-CN"/><w:clrSchemeMapping w:bg1="light1" w:t1="dark1" w:bg2="light2" w:t2="dark2" w:accent1="accent1" w:accent2="accent2" w:accent3="accent3" w:accent4="accent4" w:accent5="accent5" w:accent6="accent6" w:hyperlink="hyperlink" w:followedHyperlink="followedHyperlink"/><w:shapeDefaults><o:shapedefaults v:ext="edit" spidmax="10242"/><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout></w:shapeDefaults><w:decimalSymbol w:val="."/><w:listSeparator w:val=","/></w:settings>"""
         self._add_xml(path='word/settings.xml', xml=xml)
 
     def _build_styles(self):
@@ -543,6 +544,7 @@ class DocX:
                  E('w:gridCol', {'w:w': '8000'}),
                  E('w:gridCol', {'w:w': '1000'})),
                E('w:tr',
+                 E('w:trPr', E('w:cantSplit'), E('w:jc', {'w:val':'center'})),
                  E('w:tc',
                    E('w:tcPr', E('w:vAlign', {'w:val': 'center'})),
                    E('w:p',
@@ -568,7 +570,8 @@ class DocX:
         self.body_elements.append(p)
 
     def visit_math_note(self, var_list):
-        self.body_elements.append(E('w:p', E('w:r', E('w:t', '式中：'))))
+        if len(var_list) > 0:
+            self.body_elements.append(E('w:p', E('w:r', E('w:t', '式中：'))))
         for var in var_list:
             p = E('w:p')
             self.body_elements.append(p)
@@ -834,6 +837,21 @@ class DocX:
         else:
             return [self._make_m_sSub(var, sub)]
 
+    def visit_number(self, value, precision):
+        if value > 10000 or value < 0.01:
+            sup = int(math.log10(abs(value)))
+            if sup < 0:
+                sup -= 1
+            base = value / math.pow(10, sup)
+            return [self._make_m_r(f'{base:.2f}'),
+                    self._make_m_r('⋅', sty='p'),
+                    self._make_m_sSup('10', f'{sup}')]
+        if precision is None:
+            value = f'{value}'
+        else:
+            value = f'{value:.{precision}f}'
+        return [self._make_m_r(value)]
+
     def visit_unit(self, symbol):
         return [self._make_m_r(symbol, sty='p')]
 
@@ -852,12 +870,6 @@ class DocX:
 
     def visit_math_align_text(self, text):
         return [self._make_m_r(text, align=True)]
-
-    def visit_math_line(self, list_):
-        ret = list()
-        for item in list_:
-            ret.extend(item.visit(self))
-        return ret
 
     def visit_multi_line(self, list_, included):
         arr = E('m:eqArr')
@@ -895,7 +907,17 @@ class DocX:
                  E('m:sub', sub))
 
     def _make_m_sSup(self, base, sup):
-        base = self._make_m_r(base) if isinstance(base, str) else base.visit(self)
+        if isinstance(base, str):
+            base = self._make_m_r(base)
+        else:
+            base = base.visit(self)
+            if base[-1].tag == 'm:sSup':
+                base = E('m:d',
+                         E('m:dPr',
+                           E('m:begChr', {'m:val': '('}),
+                           E('m:endChr', {'m:val': ')'})),
+                         E('m:e',
+                           base))
         sup = self._make_m_r(sup) if isinstance(sup, str) else sup.visit(self)
         return E('m:sSup',
                  E('m:e', base),

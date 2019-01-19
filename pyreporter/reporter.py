@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 
 __all__ = ['Report', 'DefaultCover',
-           'Block', 'StandaloneFigure', 'StandaloneMath',
+           'Block', 'StandaloneFigure', 'StandaloneMath', 'Paragraph',
            'Definition', 'Procedure', 'Note', 'VariableValue',
            'Figure', 'Math']
 
@@ -262,6 +262,16 @@ class Paragraph(Context):
             assert isinstance(content[i], Content)
         self.content = content
 
+    def append(self, item):
+        if isinstance(item, str):
+            item = Text(item)
+        assert isinstance(item, Content)
+        self.content.append(item)
+
+    def extend(self, *items):
+        for item in items:
+            self.append(item)
+
     def visit(self, visitor):
         visitor.visit_paragraph(content=self.content)
 
@@ -302,7 +312,7 @@ class Definition(Context):
     def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
         self.visit_formula(variable, expression, long)
 
-    def visit_calculator(self, formula_list):
+    def visit_calculator(self, formula_list, sequence: bool):
         for formula in formula_list:
             formula.visit(self)
 
@@ -340,8 +350,12 @@ class Procedure(Context):
         if condition:
             self.visit_formula(variable, expression, long)
 
-    def visit_calculator(self, formula_list):
-        for formula in formula_list[::-1]:
+    def visit_calculator(self, formula_list, sequence: bool):
+        if sequence:
+            list_ = formula_list[::-1]
+        else:
+            list_ = formula_list
+        for formula in list_:
             formula.visit(self)
 
 
@@ -372,9 +386,11 @@ class Note(Context):
     def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
         self.visit_formula(variable, expression, long)
 
-    def visit_calculator(self, formula_list):
+    def visit_calculator(self, formula_list, sequence):
         for formula in formula_list:
-            formula.visit(self)
+            self.variable_dict.update(formula.variable.get_variable_dict())
+        for formula in formula_list:
+            self.variable_dict.update(formula.expression.get_variable_dict())
 
 
 class StandaloneFigure(Context):

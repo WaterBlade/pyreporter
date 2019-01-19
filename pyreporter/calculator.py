@@ -314,12 +314,14 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=None, inform=None):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2, inform=None):
         super().__init__()
         self.symbol = symbol
         self.value = value
         self.subscript = subscript
         self.precision = precision
+        if unit is not None and isinstance(unit, Div):
+            unit = FlatDiv(unit.left, unit.right)
         self.unit = unit
         self.inform = inform
 
@@ -331,6 +333,9 @@ class Variable(Expression):
 
     def __hash__(self):
         return id(self)
+
+    def set(self, value):
+        self.value = value
 
     def get_variable_dict(self):
         return OrderedDict({id(self): self})
@@ -362,12 +367,16 @@ class FractionVariable(Variable):
 
 class Number(Variable):
     def __init__(self, value, precision=None):
-        if precision is None:
-            data = f'{value}'
-        else:
-            fmt = f'%.{precision}f'
-            data = fmt % value
-        super().__init__(data, value=value)
+        super().__init__('number', value=value, precision=precision)
+
+    def copy(self):
+        return Number(self.value, self.precision)
+
+    def visit(self, visitor):
+        return visitor.visit_number(self.value, self.precision)
+
+    def copy_result(self):
+        return self.copy()
 
     def get_variable_dict(self):
         return OrderedDict()
@@ -517,8 +526,9 @@ class ConditionFormula(Formula):
 
 
 class Calculator:
-    def __init__(self):
+    def __init__(self, sequence=True):
         self.formula_list = list()  # type: List[Formula]
+        self.sequence = sequence
 
     def add(self, formula):
         self.formula_list.append(formula)
@@ -530,7 +540,7 @@ class Calculator:
         return self.formula_list[0].variable.value
 
     def visit(self, visitor):
-        visitor.visit_calculator(self.formula_list)
+        visitor.visit_calculator(self.formula_list, sequence=self.sequence)
 
 
 class TrailSolver(Calculator):
