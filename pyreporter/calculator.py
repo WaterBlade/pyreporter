@@ -348,7 +348,7 @@ class Variable(Expression):
 
     def calc(self):
         if self.value is None:
-            raise ValueError(f'Variable {self.symbol} has no value!')
+            raise ValueError(f'Variable {self} has no value!')
         else:
             return self.value
 
@@ -367,6 +367,7 @@ class FractionVariable(Variable):
 
 class Number(Variable):
     def __init__(self, value, precision=None):
+        assert isinstance(value, float) or isinstance(value, int)
         super().__init__('number', value=value, precision=precision)
 
     def copy(self):

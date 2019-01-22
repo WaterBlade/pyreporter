@@ -381,7 +381,11 @@ class Note(Context):
         self.variable_dict.update(expression.get_variable_dict())
 
     def visit_piecewise_formula(self, variable, expression, expression_list, condition_list, long):
-        self.visit_formula(variable, expression, long)
+        self.variable_dict.update(variable.get_variable_dict())
+        for exp in expression_list:
+            self.variable_dict.update(exp.get_variable_dict())
+        for cond in condition_list:
+            self.variable_dict.update(cond.get_variable_dict())
 
     def visit_condition_formula(self, variable, expression, condition: bool, long: bool):
         self.visit_formula(variable, expression, long)
@@ -390,7 +394,7 @@ class Note(Context):
         for formula in formula_list:
             self.variable_dict.update(formula.variable.get_variable_dict())
         for formula in formula_list:
-            self.variable_dict.update(formula.expression.get_variable_dict())
+            formula.visit(self)
 
 
 class StandaloneFigure(Context):
@@ -438,6 +442,8 @@ class Table(Context):
         if title is not None:
             mark = Bookmark('表')
             self.reference = mark.reference
+            if isinstance(title, str):
+                title = Text(title)
             title = Composite(mark, title)
             for item in title:
                 assert isinstance(item, Content)

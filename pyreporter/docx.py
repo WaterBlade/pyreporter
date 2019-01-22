@@ -13,6 +13,7 @@ TEXT_SIZE = {'normal': 12, 'large': 18, 'small': 8}
 PAGE_WIDTH = 8200
 MIN_TABLE_CELL_WIDTH = 1600
 
+
 # visitor will return list of element.
 # not all visitor will return.
 # only the Content class visitor will return.
@@ -470,45 +471,47 @@ class DocX:
 
         log = self.catalog_elements
 
-        para = E('w:p')
+        if level <= 3:
 
-        prop = E('w:pPr',
-                 E('w:pStyle', {'w:val': f'{level*10}'}),
-                 E('w:tabs',
-                   E('w:tab', {'w:val': 'left', 'w:pos': f'{420+630*(level-1)}'}),
-                   E('w:tab', {'w:val': 'right', 'w:leader': 'dot', 'w:pos': '8296'})),
-                 E('w:rPr', E('w:noProof'), E('w:rStyle', {'w:val': 'a3'})))
-        para.append(prop)
+            para = E('w:p')
 
-        if len(log) == 0:
-            log.append(E('w:p',
-                         E('w:pPr', E('w:jc', {'w:val': 'center'})),
-                         E('w:r',
-                           E('w:rPr', E('w:b'), E('w:sz', {'w:val': '32'})),
-                           E('w:t', '目录'))))
-            log.append(para)
+            prop = E('w:pPr',
+                     E('w:pStyle', {'w:val': f'{level*10}'}),
+                     E('w:tabs',
+                       E('w:tab', {'w:val': 'left', 'w:pos': f'{420+630*(level-1)}'}),
+                       E('w:tab', {'w:val': 'right', 'w:leader': 'dot', 'w:pos': '8296'})),
+                     E('w:rPr', E('w:noProof'), E('w:rStyle', {'w:val': 'a3'})))
+            para.append(prop)
 
-            para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
-            para.append(E('w:r', E('w:instrText', {'xml:space': 'preserve'}, ' ')))
-            para.append(E('w:r', E('w:instrText', 'TOC \\o "1-3" \\h \\z \\u')))
-            para.append(E('w:r', E('w:instrText', ' ', {'xml:space': 'preserve'})))
-            para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
+            if len(log) == 0:
+                log.append(E('w:p',
+                             E('w:pPr', E('w:jc', {'w:val': 'center'})),
+                             E('w:r',
+                               E('w:rPr', E('w:b'), E('w:sz', {'w:val': '32'})),
+                               E('w:t', '目录'))))
+                log.append(para)
 
-        else:
-            log.append(para)
+                para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
+                para.append(E('w:r', E('w:instrText', {'xml:space': 'preserve'}, ' ')))
+                para.append(E('w:r', E('w:instrText', 'TOC \\o "1-3" \\h \\z \\u')))
+                para.append(E('w:r', E('w:instrText', ' ', {'xml:space': 'preserve'})))
+                para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
 
-        link = E('w:hyperlink', {'w:anchor': text, 'w:history': '1'},
-                 E('w:r', E('w:t', '0')),
-                 E('w:r', E('w:tab')),
-                 E('w:r', E('w:t', content)),
-                 E('w:r', E('w:tab')),
-                 E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})),
-                 E('w:r', E('w:instrText', {'xml:space': 'preserve'},
-                            f' PAGEREF {text} \\h ')),
-                 E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})),
-                 E('w:r', E('w:t', '0')),
-                 E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
-        para.append(link)
+            else:
+                log.append(para)
+
+            link = E('w:hyperlink', {'w:anchor': text, 'w:history': '1'},
+                     E('w:r', E('w:t', '0')),
+                     E('w:r', E('w:tab')),
+                     E('w:r', E('w:t', content)),
+                     E('w:r', E('w:tab')),
+                     E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})),
+                     E('w:r', E('w:instrText', {'xml:space': 'preserve'},
+                                f' PAGEREF {text} \\h ')),
+                     E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})),
+                     E('w:r', E('w:t', '0')),
+                     E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
+            para.append(link)
 
     def visit_paragraph(self, content):
         para = E('w:p')
@@ -544,7 +547,7 @@ class DocX:
                  E('w:gridCol', {'w:w': '8000'}),
                  E('w:gridCol', {'w:w': '1000'})),
                E('w:tr',
-                 E('w:trPr', E('w:cantSplit'), E('w:jc', {'w:val':'center'})),
+                 E('w:trPr', E('w:cantSplit'), E('w:jc', {'w:val': 'center'})),
                  E('w:tc',
                    E('w:tcPr', E('w:vAlign', {'w:val': 'center'})),
                    E('w:p',
@@ -838,7 +841,7 @@ class DocX:
             return [self._make_m_sSub(var, sub)]
 
     def visit_number(self, value, precision):
-        if value > 10000 or value < 0.01:
+        if abs(value) > 10000 or abs(value) < 0.01 and value != 0:
             sup = int(math.log10(abs(value)))
             if sup < 0:
                 sup -= 1
@@ -859,7 +862,7 @@ class DocX:
         if sub is None:
             return [self._make_m_sSub(var, f'{index}')]
         elif isinstance(sub, str):
-            return [self._make_m_sSub(var, sub+f'-{index}')]
+            return [self._make_m_sSub(var, sub + f'-{index}')]
         else:
             E('m:sSub',
               E('m:e', self._make_m_r(var)),
@@ -878,9 +881,19 @@ class DocX:
         if included is None:
             return [arr]
         elif included == 'left':
-            return [self._make_m_d(arr, left='{')]
+            return [E('m:d',
+                      E('m:dPr',
+                        E('m:begChr', {'m:val': '{'}),
+                        E('m:endChr', {'m:val': ''})),
+                      E('m:e',
+                        arr))]
         elif included == 'right':
-            return [self._make_m_d(arr, right='}')]
+            return [E('m:d',
+                      E('m:dPr',
+                        E('m:begChr', {'m:val': ''}),
+                        E('m:endChr', {'m:val': '}'})),
+                      E('m:e',
+                        arr))]
         else:
             raise TypeError('Unknown included type: %s in math multi line' % included)
 
