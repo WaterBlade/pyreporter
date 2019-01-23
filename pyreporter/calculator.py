@@ -490,20 +490,27 @@ class Formula(FormulaBase):
 
 
 class PiecewiseFormula(FormulaBase):
-    def __init__(self, var, expression_list, condition_list, long=False):
+    def __init__(self, var, expression_list, condition_list, long: List[bool]=None):
         self.variable = var  # type: Variable
+        assert len(expression_list) == len(condition_list)
         self.expression_list = expression_list  # type: List[Expression]
         self.condition_list = condition_list  # type: List[Expression]
 
-        self.long = long
+        if long is None:
+            long = [False] * len(self.expression_list)
+        else:
+            assert len(long) == len(self.expression_list)
+        self.long_list = long
+        self.long = False
 
         self.expression = None
 
     def calc(self):
-        for exp, cond in zip(self.expression_list, self.condition_list):
+        for exp, cond, long in zip(self.expression_list, self.condition_list, self.long_list):
             if cond.calc():
                 self.variable.value = exp.calc()
                 self.expression = exp
+                self.long = long
                 return self.variable.value
         return None
 

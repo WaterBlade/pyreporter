@@ -1,4 +1,4 @@
-from pyreporter import (Report, DefaultCover, Paragraph,
+from pyreporter import (Report, DefaultCover, Paragraph, Content, Math,
                         Definition, Procedure, Note, VariableValue)
 from pyreporter.calculator import (Variable, FractionVariable, Number, Unit,
                                    Pr, FlatDiv, Sq,
@@ -151,7 +151,8 @@ My_calc.add(PiecewiseFormula(My,
                              [M0 + 1 / N(2) * a * T1 + X1 * y,
                               M0 + 1 / N(2) * a * T1 - 1 / N(6) * γ * Sq(y - Pr(h - h1)) ** 3 + X1 * y],
                              [y <= h - h1,
-                              y > h - h1]))
+                              y > h - h1],
+                             [False, True]))
 
 Mj = V('M', 'φ', inform='圆弧段弯矩', unit=U('kN') * U('m'))
 φ = V('φ', inform='圆弧段计算内力截面位置对应的圆心角', unit=U('rad'))
@@ -352,13 +353,14 @@ if __name__ == '__main__':
         φ.set(phi)
         Mji_calc.calc()
         value = Mj_calc.calc()
-        rep.add_paragraph('当', Value(φ), '时，直段内弯矩各分量结算结果及过程如下：')
+        rep.add_heading(Content(Value(φ), '截面弯矩'), level=5)
+        rep.add_paragraph('当', Value(φ), '时，弧段内弯矩各分量结算结果及过程如下：')
         rep.add(Procedure(Mji_calc))
         rep.add_paragraph('截面弯矩计算结果为：')
         rep.add(Procedure(Mj_calc))
         value_list.append([f'{phi:.2f}', f'{value:.2f}'])
 
     rep.add_paragraph('结果汇总如下：')
-    rep.add_table([['角度', '截面弯矩']]+value_list, title='弧段弯矩计算值')
+    rep.add_table([[Content('角度（', Math(Unit('rad')), '）'), Content('截面弯矩（', Math(Unit('kN')*Unit('m')), '）')]]+value_list, title='弧段弯矩计算值')
 
     rep.save('ushell_demo.docx')

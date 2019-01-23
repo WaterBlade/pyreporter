@@ -8,7 +8,7 @@ from collections import OrderedDict
 __all__ = ['Report', 'DefaultCover',
            'Block', 'StandaloneFigure', 'StandaloneMath', 'Paragraph',
            'Definition', 'Procedure', 'Note', 'VariableValue',
-           'Figure', 'Math']
+           'Figure', 'Math', 'Content']
 
 
 class Report:
@@ -44,7 +44,7 @@ class Report:
         self.block.visit(self.writer)
         self.writer.save(path)
 
-    def add_heading(self, heading: str, level: int):
+    def add_heading(self, heading, level: int):
         self.add(Heading(heading, level))
 
     def add_paragraph(self, *items):
@@ -81,7 +81,7 @@ class Block:
                 item.remove_duplicate_note(symbol_set)
 
     def add(self, element):
-        assert isinstance(element, Context)
+        assert isinstance(element, ContextRoot)
         if isinstance(element, Block):
             self._element_list.extend(element._element_list)
         else:
@@ -111,12 +111,12 @@ class Block:
             element.visit(visitor)
 
 
-class Content:
+class ContentRoot:
     def visit(self, visitor):
         pass
 
 
-class Context:
+class ContextRoot:
     def visit(self, visitor):
         pass
 
@@ -152,7 +152,15 @@ class Composite:
         return visitor.visit_composite(self.list_)
 
 
-class Text(Content):
+class Content(Composite):
+    def append(self, item):
+        if isinstance(item, str):
+            item = Text(item)
+        assert isinstance(item, ContentRoot)
+        super().append(item)
+
+
+class Text(ContentRoot):
     def __init__(self, text, font=None, size=None,
                  italic=False, bold=False, underline=False):
         self.text = text
@@ -171,13 +179,13 @@ class Text(Content):
                                   underline=self.underline)
 
 
-class Math(Content):
+class Math(ContentRoot):
     def __init__(self, *items):
         content = Composite(*items)
         for item in content:
             assert not isinstance(item, str)
-            assert not isinstance(item, Context)
-            assert not isinstance(item, Content)
+            assert not isinstance(item, ContextRoot)
+            assert not isinstance(item, ContentRoot)
         self.content = content
 
     def append(self, item):
@@ -195,7 +203,7 @@ class VariableValue(Math):
             super().__init__(variable, _MathText('='), variable.copy_result(), variable.unit)
 
 
-class Figure(Content):
+class Figure(ContentRoot):
     def __init__(self, file, height=None):
         self.figure = _FigureContent(file, height)
 
@@ -210,7 +218,7 @@ class Figure(Content):
                                            height=height)
 
 
-class Bookmark(Content):
+class Bookmark(ContentRoot):
     def __init__(self, type_, left=None, right=None):
         self.type_ = type_
         self.reference = Reference(self)
@@ -222,7 +230,7 @@ class Bookmark(Content):
                                       left=self.left, right=self.right)
 
 
-class Reference(Content):
+class Reference(ContentRoot):
     def __init__(self, bookmark: Bookmark):
         self.bookmark = bookmark
 
@@ -230,11 +238,11 @@ class Reference(Content):
         return visitor.visit_reference(self.bookmark)
 
 
-class Footnote(Content):
+class Footnote(ContentRoot):
     def __init__(self, *items):
         content = Composite(*items)
         for item in content:
-            assert isinstance(item, Content)
+            assert isinstance(item, ContentRoot)
             assert not isinstance(item, Footnote)
         self.content = content
 
@@ -242,8 +250,10 @@ class Footnote(Content):
         return visitor.visit_footnote(self.content)
 
 
-class Heading(Context):
-    def __init__(self, heading: str, level=1):
+class Heading(ContextRoot):
+    def __init__(self, heading, level=1):
+        if isinstance(heading, str):
+            heading = Text(heading)
         self.content = heading
         self.level = level
 
@@ -253,19 +263,19 @@ class Heading(Context):
                                      heading=self)
 
 
-class Paragraph(Context):
+class Paragraph(ContextRoot):
     def __init__(self, *items):
         content = Composite(*items)
         for i in range(len(content)):
             if isinstance(content[i], str):
                 content[i] = Text(content[i])
-            assert isinstance(content[i], Content)
+            assert isinstance(content[i], ContentRoot)
         self.content = content
 
     def append(self, item):
         if isinstance(item, str):
             item = Text(item)
-        assert isinstance(item, Content)
+        assert isinstance(item, ContentRoot)
         self.content.append(item)
 
     def extend(self, *items):
@@ -276,7 +286,7 @@ class Paragraph(Context):
         visitor.visit_paragraph(content=self.content)
 
 
-class StandaloneMath(Context):
+class StandaloneMath(ContextRoot):
     def __init__(self, *items):
         content = Composite(*items)
         for item in content:
@@ -287,7 +297,7 @@ class StandaloneMath(Context):
         visitor.visit_standalone_math(content=self.content)
 
 
-class Definition(Context):
+class Definition(ContextRoot):
     def __init__(self, formula_or_calculator):
         self.content = Composite()
         formula_or_calculator.visit(self)
@@ -317,7 +327,7 @@ class Definition(Context):
             formula.visit(self)
 
 
-class Procedure(Context):
+class Procedure(ContextRoot):
     def __init__(self, formula_or_calculator):
         self.content = Composite()
         formula_or_calculator.visit(self)
@@ -359,7 +369,7 @@ class Procedure(Context):
             formula.visit(self)
 
 
-class Note(Context):
+class Note(ContextRoot):
     def __init__(self, formula_or_calculator):
         self._list = list()
         self.variable_dict = OrderedDict()
@@ -397,8 +407,8 @@ class Note(Context):
             formula.visit(self)
 
 
-class StandaloneFigure(Context):
-    def __init__(self, file, height=None, title: Union[str, Content] = None):
+class StandaloneFigure(ContextRoot):
+    def __init__(self, file, height=None, title: Union[str, ContentRoot] = None):
         self.figure = _FigureContent(file, height)
 
         self.reference = None
@@ -407,7 +417,7 @@ class StandaloneFigure(Context):
             self.reference = mark.reference
             title = Composite(mark, title)
             for item in title:
-                assert isinstance(item, Content)
+                assert isinstance(item, ContentRoot)
         self.title = title
 
     def visit(self, visitor):
@@ -423,9 +433,9 @@ class StandaloneFigure(Context):
                                     title=title)
 
 
-class Table(Context):
-    def __init__(self, content_by_rows: List[List[Content]],
-                 title: Union[str, Content] = None):
+class Table(ContextRoot):
+    def __init__(self, content_by_rows: List[List[ContentRoot]],
+                 title: Union[str, ContentRoot] = None):
         self.content_by_rows = list()
         for r in content_by_rows:
             row = list()
@@ -434,7 +444,7 @@ class Table(Context):
                     c = Text(c)
                 elif isinstance(c, float) or isinstance(c, int):
                     c = Text(f'{c}')
-                assert isinstance(c, Content)
+                assert isinstance(c, ContentRoot) or isinstance(c, Content)
                 row.append(c)
             self.content_by_rows.append(row)
 
@@ -446,7 +456,7 @@ class Table(Context):
                 title = Text(title)
             title = Composite(mark, title)
             for item in title:
-                assert isinstance(item, Content)
+                assert isinstance(item, ContentRoot)
         self.title = title
 
     def visit(self, visitor):
