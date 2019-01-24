@@ -314,7 +314,7 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=2, inform=None):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=3, inform=None):
         super().__init__()
         self.symbol = symbol
         self.value = value

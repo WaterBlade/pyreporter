@@ -855,7 +855,7 @@ class DocX:
             return [self._make_m_sSub(var, sub)]
 
     def visit_number(self, value, precision):
-        if abs(value) > 10000 or abs(value) < 0.01 and value != 0:
+        if abs(value) > 10000 or abs(value) < 0.001 and value != 0:
             sup = int(math.log10(abs(value)))
             if sup < 0:
                 sup -= 1

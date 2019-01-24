@@ -33,18 +33,17 @@ R1 = V('R', '1', inform='槽壳外径', unit=U('m'))
 s0 = V('s', '0', inform='槽底加厚斜段宽度', unit=U('m'))
 
 Pa_calc = Calculator(sequence=False)
-Pa_calc.add(Formula(B, (b+c)/2))
-Pa_calc.add(Formula(R, R0+t/2))
-Pa_calc.add(Formula(R1, R0+t))
+Pa_calc.add(Formula(B, b + c / 2))
+Pa_calc.add(Formula(R, R0 + t / 2))
+Pa_calc.add(Formula(R1, R0 + t))
 Pa_calc.add(Formula(φq,
-                    Pi/2 - ATan(d0/(2*Pr(R1+t0))) - ACos(R1/Radical(Pr(d0/2)**2+Pr(R1+t0)**2, 2)),
+                    Pi / 2 - ATan(d0 / (2 * Pr(R1 + t0))) - ACos(R1 / Radical(Pr(d0 / 2) ** 2 + Pr(R1 + t0) ** 2, 2)),
                     long=True))
-Pa_calc.add(Formula(s0, R1*Cos(φq)-d0/2))
-
+Pa_calc.add(Formula(s0, R1 * Cos(φq) - d0 / 2))
 
 # 分块计算
-Iti = SV('I', 't', unit=U('m')**4, inform='各分块惯性矩')
-Ai = SV('A', unit=U('m')**2, inform='各分块截面宽度')
+Iti = SV('I', 't', unit=U('m') ** 4, inform='各分块惯性矩')
+Ai = SV('A', unit=U('m') ** 2, inform='各分块截面宽度')
 yci = SV('y', 'c', unit=U('m'), inform='各分块截面重心至槽顶距离')
 Split_calc = Calculator(sequence=False)
 
@@ -104,7 +103,6 @@ Split_calc.add(Formula(yc7, f + R1))
 Split_calc.add(Formula(A7, 2 * (t0 * s0 / 2)))
 Split_calc.add(Formula(It7, 2 * (s0 * t0 ** 3 / 36)))
 
-
 # 截面特性计算
 A = V('A', inform='横截面的总面积', unit=U('m') ** 2)
 y1 = V('y', '1', inform='形心轴到槽身顶部距离', unit=U('m'))
@@ -113,7 +111,6 @@ K = V('K', inform='形心轴至圆形轴距离', unit=U('m'))
 I = V('I', inform='横截面对形心轴的惯性矩', unit=U('m') ** 4)
 φ0 = V('φ', '0', inform='形心轴位置对应的夹角', unit=U('rad'))
 Sl = V('S', 'l', inform='受拉区面积对截面形心轴的静面矩', unit=U('m') ** 3)
-
 
 Geo_calc = Calculator(sequence=False)
 Geo_calc.add(Formula(A, Sum(Ai, [Ai])))
@@ -129,7 +126,7 @@ Geo_calc.add(Formula(Sl,
                      long=True))
 
 # U形槽纵向内力计算
-q = V('q', inform='每米槽壳长度内的所有荷载之和', unit=U('kN')/U('m'))
+q = V('q', inform='每米槽壳长度内的所有荷载之和', unit=U('kN') / U('m'))
 L = V('L', inform='槽身计算跨径', unit=U('m'))
 M = V('M', inform='简支梁跨中弯矩', unit=U('kN') * U('m'))
 Q = V('Q', inform='简支梁梁端剪力', unit=U('kN'))
@@ -160,7 +157,7 @@ T2 = V('T', '2', inform='直段加大部分以下的直段剪力', unit=U('kN'))
 
 T_calc = Calculator()
 T_calc.add(Formula(T, T1 + T2))
-T_calc.add(Formula(T1, q / I * Pr(y1 * B / 2 - B ** 3 / 6) * Pr(t + a), long=True))
+T_calc.add(Formula(T1, q / I * Pr(y1 * B ** 2 / 2 - B ** 3 / 6) * Pr(t + a), long=True))
 T_calc.add(Formula(T2,
                    q / I * Sq(t * y1 * Pr(f ** 2 / 2 - B * f + B ** 2 / 2)
                               - t * Pr(f ** 3 / 6 - B ** 2 * f / 2 + B ** 3 / 3)
@@ -172,7 +169,7 @@ D_calc = Calculator(sequence=False)
 P_calc = Calculator(sequence=False)
 
 X1 = V('X', '1', inform='多余未知力')
-δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位')
+δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位', precision=4)
 Δ1P = V('Δ', '1P', inform='所有荷载引起的水平变位')
 Δ1G0 = V('Δ', V('1G', '0'), inform='附加集中力引起的水平变位')
 Δ1M0 = V('Δ', V('1M', '0'), inform='附加弯矩引起的水平变位')
@@ -185,7 +182,7 @@ It = V('I', 't', inform='槽壳横向惯性矩', unit=U('m') ** 4)
 h = V('h', inform='圆心轴至拉杆中心高度', unit=U('m'))
 λ = V('λ', inform='计算中间参数，形心距与半径比值')
 
-X1_calc.add(Formula(X1, Δ1P / δ11))
+X1_calc.add(Formula(X1, -(Δ1P / δ11)))
 X1_calc.add(Formula(Δ1P, Δ1G0 + Δ1M0 + Δ1h + Δ1W + Δ1τ, long=True))
 X1_calc.add(Formula(δ11, R ** 3 / (E * It) * Pr(0.333 * β ** 3 + 1.571 * β ** 2 + 2 * β + 0.785), long=True))
 
@@ -203,16 +200,16 @@ D_calc.add(Formula(Δ1G0, -((G0 * R ** 3) / (E * It) * Pr(0.571 * β + 0.5)), lo
 D_calc.add(Formula(Δ1M0, (M0 * R ** 2) / (E * It) * Pr(0.5 * β ** 2 + 1.57 * β + 1), long=True))
 D_calc.add(Formula(Δ1h, -((γh * t * R ** 4) / (E * It) * Pr(0.571 * β ** 2 + 0.929 * β + 0.393)), long=True))
 D_calc.add(Formula(Δ1W,
-                    - (γ / (E * It) *
-                       Pr(-N(0.008, 3) * h ** 5
-                          + N(0.04, 2) * h ** 4 * h1
-                          - 0.082 * h ** 3 * h1 ** 2
-                          + 0.083 * h ** 2 * h1 ** 3)
-                       - (γ * R) / (E * It) *
-                       Sq(h1 ** 3 * Pr(0.262 * h + 0.167 * R)
-                          + h1 ** 2 * R * Pr(0.5 * h + 0.393 * R)
-                          + h1 * R0 * R * Pr(0.57 * h + 0.5 * R)
-                          + R0 ** 2 * R * Pr(0.215 * h + 0.197 * R))), long=True))
+                   - γ / (E * It) *
+                   Pr(-N(0.008, 3) * h ** 5
+                      + N(0.04, 2) * h ** 4 * h1
+                      - 0.082 * h ** 3 * h1 ** 2
+                      + 0.083 * h ** 2 * h1 ** 3)
+                   - (γ * R) / (E * It) *
+                   Sq(h1 ** 3 * Pr(0.262 * h + 0.167 * R)
+                      + h1 ** 2 * R * Pr(0.5 * h + 0.393 * R)
+                      + h1 * R0 * R * Pr(0.57 * h + 0.5 * R)
+                      + R0 ** 2 * R * Pr(0.215 * h + 0.197 * R)), long=True))
 D_calc.add(Formula(Δ1τ,
                    1 / (E * It) * ((q * t) / I) * R ** 6 * Pr(0.214 * β - 0.294 * λ * β - 0.265 * λ + 0.197)
                    + (T * R ** 3) / (E * It) * Pr(0.571 * β + 0.5)
@@ -269,6 +266,25 @@ Mji_calc.add(Formula(Mτ,
                      long=True))
 Mji_calc.add(Formula(MX1,
                      X1 * Pr(h + R * Sin(φ))))
+
+# 轴力
+# 直段部分
+Ny = V('N', 'y', inform='直段轴力', unit=U('kN'))
+
+Ny_calc = Calculator()
+Ny_calc.add(PiecewiseFormula(Ny,
+                             [G0+γh*Pr(t+a)*b-T1,
+                              G0+γh*Pr(t*f+a*b)-T],
+                             [y <= h - h1,
+                              y > h - h1]))
+
+# 弧段部分
+Nj = V('N', 'φ', inform='圆弧段轴力', unit=U('kN'))
+NG0 = V('N', V('G', '0'), inform='附加力引起的截面轴力', unit=U('kN'))
+Nh = V('N', 'h', inform='槽身自重引起的截面轴力', unit=U('kN'))
+NW = V('N', 'W', inform='水压力引起的截面轴力', unit=U('kN'))
+Nτ = V('N', 'τ', inform='剪应力引起的截面轴力', unit=U('kN'))
+NX1 = V('N', V('X', '1'), inform='多余未知力引起的截面轴力', unit=U('kN'))
 
 
 def value_para(var_list, def_=None):
@@ -383,7 +399,7 @@ if __name__ == '__main__':
 
     E.set(3.0e7)
     M0.set(1.606)
-    G0.set(10)
+    G0.set(7.442)
     h.set(0.65)
     h1.set(0.5)
     γ.set(10)
@@ -429,8 +445,8 @@ if __name__ == '__main__':
     rep.add_paragraph('带入不同值进行计算。')
 
     value_list = list()
-    for k in range(10):
-        phi = math.pi * k / 18
+    for k in range(7):
+        phi = math.pi * k / 12
         φ.set(phi)
         Mji_calc.calc()
         value = Mj_calc.calc()
@@ -442,6 +458,8 @@ if __name__ == '__main__':
         value_list.append([f'{phi:.2f}', f'{value:.2f}'])
 
     rep.add_paragraph('结果汇总如下：')
-    rep.add_table([[Content('角度（', Math(Unit('rad')), '）'), Content('截面弯矩（', Math(Unit('kN')*Unit('m')), '）')]]+value_list, title='弧段弯矩计算值')
+    rep.add_table(
+        [[Content('角度（', Math(Unit('rad')), '）'), Content('截面弯矩（', Math(Unit('kN') * Unit('m')), '）')]] + value_list,
+        title='弧段弯矩计算值')
 
     rep.save('ushell_demo.docx')
