@@ -5,7 +5,7 @@ from collections import OrderedDict
 __all__ = ['Variable', 'FractionVariable', 'Number', 'Unit',
            'Formula', 'PiecewiseFormula', 'Calculator', 'TrailSolver',
            'FlatDiv', 'Sin', 'ASin', 'Cos', 'ACos', 'Tan', 'ATan', 'Cot', 'ACot',
-           'Radical', 'Pr', 'Sq', 'Br']
+           'Radical', 'Pr', 'Sq', 'Br', 'Sum']
 
 
 def wrapper_number(number):
@@ -335,6 +335,8 @@ class Variable(Expression):
         return id(self)
 
     def set(self, value):
+        if isinstance(value, Expression):
+            value = value.calc()
         self.value = value
 
     def get_variable_dict(self):
@@ -419,6 +421,9 @@ class Sum(Expression):
                 ret += self.left.copy_result()
         return ret
 
+    def visit(self, visitor):
+        return visitor.visit_sum(self.left)
+
 
 class SerialVariable(Variable):
     def __init__(self, symbol, subscript=None, value=None, index='i', unit=None, precision=2, inform=None):
@@ -428,15 +433,18 @@ class SerialVariable(Variable):
         self._variable_list = list()
         self._curr = None
 
-    def new(self):
+    def new(self, inform=None):
         index = len(self._variable_list) + 1
         v = VariableInSerial(serial=self, symbol=self.symbol, subscript=self.subscript,
-                             index=index, unit=self.unit, precision=self.precision)
+                             index=index, unit=self.unit, precision=self.precision, inform=inform)
         self._variable_list.append(v)
         return v
 
     def __getitem__(self, item):
         return self._variable_list[item]
+
+    def __len__(self):
+        return len(self._variable_list)
 
     def calc(self):
         return self._curr.calc()
@@ -448,20 +456,23 @@ class SerialVariable(Variable):
         return self._curr.copy_result()
 
     def visit(self, visitor):
-        visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
+        return visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
 
 
 class VariableInSerial(Variable):
-    def __init__(self, *, serial, symbol, subscript, index, unit, precision):
+    def __init__(self, *, serial, symbol, subscript, index, unit, precision, inform):
         self.root = serial
         self.index = index
-        super().__init__(symbol=symbol, subscript=subscript, unit=unit, precision=precision)
+        super().__init__(symbol=symbol, subscript=subscript, unit=unit, precision=precision, inform=inform)
 
     def get_variable_dict(self):
-        return self.root.get_variable_dict()
+        if self.inform is None:
+            return self.root.get_variable_dict()
+        else:
+            return OrderedDict({id(self): self})
 
     def visit(self, visitor):
-        visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
+        return visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
 
 
 class FormulaBase:
@@ -542,7 +553,12 @@ class Calculator:
         self.formula_list.append(formula)
 
     def calc(self):
-        for formula in self.formula_list[::-1]:
+        if self.sequence:
+            list_ = self.formula_list[::-1]
+        else:
+            list_ = self.formula_list
+
+        for formula in list_:
             formula.calc()
 
         return self.formula_list[0].variable.value

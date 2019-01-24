@@ -46,6 +46,7 @@ class DocX:
     def __init__(self):
         self.file_list = list()
         self.figure_list = list()
+        self.catalog_list = list()
 
         self.rel_id = 1
         self.footnote_id = 2
@@ -501,7 +502,7 @@ class DocX:
                 log.append(para)
 
             link = E('w:hyperlink', {'w:anchor': text, 'w:history': '1'},
-                     E('w:r', E('w:t', '0')),
+                     E('w:r', E('w:t', self._get_catalog_number(level))),
                      E('w:r', E('w:tab')),
                      content.visit(self),
                      E('w:r', E('w:tab')),
@@ -516,6 +517,10 @@ class DocX:
     def visit_paragraph(self, content):
         para = E('w:p')
         self.body_elements.append(para)
+
+        para.append(E('w:pPr',
+                      E('w:spacing', {'w:before': '156', 'w:after': '156'}),
+                      E('w:ind', {'w:firstLine': '420'})))
 
         para.extend(content.visit(self))
 
@@ -672,6 +677,14 @@ class DocX:
         log.append(E('w:p', E('w:r', E('w:fldChar', {'w:fldCharType': 'end'}))))
         log.append(E('w:p', E('w:pPr', self._make_w_sectPr())))
 
+    def _get_catalog_number(self, level):
+        if level > len(self.catalog_list):
+            self.catalog_list.append(1)
+        else:
+            self.catalog_list = self.catalog_list[:level]
+            self.catalog_list[-1] += 1
+        return '.'.join(str(item) for item in self.catalog_list)
+
     def _make_page_break(self):
         return E('w:p', E('w:r', E('w:br', {'w:type': 'page'})))
 
@@ -766,7 +779,8 @@ class DocX:
         if index.value == 2:
             pr.append(E('m:degHide', {'m:val': 'on'}))
 
-        rad.append(E('m:deg', index.visit(self)))
+        if index.value != 2:
+            rad.append(E('m:deg', index.visit(self)))
         rad.append(E('m:e', exp.visit(self)))
 
         return [rad]
@@ -857,6 +871,9 @@ class DocX:
 
     def visit_unit(self, symbol):
         return [self._make_m_r(symbol, sty='p')]
+
+    def visit_sum(self, exp):
+        return [self._make_m_nary(exp, name='∑')]
 
     def visit_serial_variable(self, var, sub, index):
         if sub is None:
@@ -957,7 +974,7 @@ class DocX:
 
         return d
 
-    def _make_m_nary(self, exp, sub, sup, name=None, limLoc='subSup'):
+    def _make_m_nary(self, exp, sub=None, sup=None, name=None, limLoc='subSup'):
         n = E('m:nary')
 
         pr = E('m:naryPr')
@@ -965,11 +982,16 @@ class DocX:
 
         if name:
             pr.append(E('m:chr', {'m:val': name}))
-        pr.append(E('m:limLoc', {'m:val': limLoc}))
+        if sub is None:
+            pr.append(E('m:subHide', {'m:val': 'on'}))
+        if sup is None:
+            pr.append(E('m:supHide', {'m:val': 'on'}))
         pr.append(E('m:ctrlPr', E('w:rPr', E('w:i'))))
 
-        n.append(E('m:sub', sub.visit(self)))
-        n.append(E('m:sup', sup.visit(self)))
+        if sub is not None:
+            n.append(E('m:sub', sub.visit(self)))
+        if sup is not None:
+            n.append(E('m:sup', sup.visit(self)))
         n.append(E('m:e', exp.visit(self)))
 
         return n
