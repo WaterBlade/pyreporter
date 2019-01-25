@@ -197,7 +197,7 @@ class Math(ContentRoot):
 
 class VariableValue(Math):
     def __init__(self, variable):
-        if variable.unit is None:
+        if variable.unit is None or variable.show_as_degree:
             super().__init__(variable, _MathText('='), variable.copy_result())
         else:
             super().__init__(variable, _MathText('='), variable.copy_result(), variable.unit)
@@ -326,6 +326,9 @@ class Definition(ContextRoot):
         for formula in formula_list:
             formula.visit(self)
 
+    def visit_equation(self, equation, satisfied, left, right, result_equation):
+        self.content.append(Math(equation))
+
 
 class Procedure(ContextRoot):
     def __init__(self, formula_or_calculator):
@@ -368,6 +371,18 @@ class Procedure(ContextRoot):
         for formula in list_:
             formula.visit(self)
 
+    def visit_equation(self, equation, satisfied, left, right, result_equation):
+        left.visit(self)
+        right.visit(self)
+
+        result = _MathText('满足要求', sty='p')
+        if not satisfied:
+            result_equation = result_equation.reverse()
+            result = _MathText('不满足要求', sty='p', color='FF0000')
+
+        self.content.append(Math(result_equation.copy_result()))
+        self.content.append(Math(result))
+
 
 class Note(ContextRoot):
     def __init__(self, formula_or_calculator):
@@ -405,6 +420,9 @@ class Note(ContextRoot):
             self.variable_dict.update(formula.variable.get_variable_dict())
         for formula in formula_list:
             formula.visit(self)
+
+    def visit_equation(self, equation, satisfied, left, right, result_equation):
+        self.variable_dict.update(equation.get_variable_dict())
 
 
 class StandaloneFigure(ContextRoot):
@@ -514,12 +532,17 @@ class _FigureContent:
 
 
 class _MathText:
-    def __init__(self, text, align=False):
+    def __init__(self, text, align=False, sty=None, color=None):
         self.text = text
         self.align = align
+        self.sty = sty
+        self.color = color
 
     def visit(self, visitor):
-        return visitor.visit_math_text(self.text, align=self.align)
+        return visitor.visit_math_text(self.text,
+                                       align=self.align,
+                                       sty=self.sty,
+                                       color=self.color)
 
 
 class _MultiLine:

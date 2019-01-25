@@ -854,20 +854,28 @@ class DocX:
         else:
             return [self._make_m_sSub(var, sub)]
 
-    def visit_number(self, value, precision):
-        if abs(value) > 10000 or abs(value) < 0.001 and value != 0:
+    def visit_number(self, value, precision, degree):
+        if abs(value) < 1e-10:
+            ret = [self._make_m_r('0')]
+        elif abs(value) > 10000 or abs(value) < 0.001 and value != 0:
             sup = int(math.log10(abs(value)))
             if sup < 0:
                 sup -= 1
             base = value / math.pow(10, sup)
-            return [self._make_m_r(f'{base:.2f}'),
-                    self._make_m_r('⋅', sty='p'),
-                    self._make_m_sSup('10', f'{sup}')]
-        if precision is None:
-            value = f'{value}'
+            ret = [self._make_m_r(f'{base:.2f}'),
+                   self._make_m_r('⋅', sty='p'),
+                   self._make_m_sSup('10', f'{sup}')]
         else:
-            value = f'{value:.{precision}f}'
-        return [self._make_m_r(value)]
+            if precision is None:
+                value = f'{value}'
+            else:
+                value = f'{value:.{precision}f}'
+            ret = [self._make_m_r(value)]
+
+        if degree:
+            ret += [self._make_m_r('°', sty='p')]
+
+        return ret
 
     def visit_unit(self, symbol):
         return [self._make_m_r(symbol, sty='p')]
@@ -885,11 +893,8 @@ class DocX:
               E('m:e', self._make_m_r(var)),
               E('m:sub', sub.visit(self), self._make_m_r(f'-{index}')))
 
-    def visit_math_text(self, text, align):
-        return [self._make_m_r(text, align=align)]
-
-    def visit_math_align_text(self, text):
-        return [self._make_m_r(text, align=True)]
+    def visit_math_text(self, text, align, sty, color):
+        return [self._make_m_r(text, align=align, sty=sty, color=color)]
 
     def visit_multi_line(self, list_, included):
         arr = E('m:eqArr')
@@ -914,7 +919,7 @@ class DocX:
         else:
             raise TypeError('Unknown included type: %s in math multi line' % included)
 
-    def _make_m_r(self, text, *, sty=None, align=False):
+    def _make_m_r(self, text, *, sty=None, align=False, color=None):
         run = E('m:r')
         if sty or align:
             pr = E('m:rPr')
@@ -923,9 +928,14 @@ class DocX:
                 pr.append(E('m:sty', {'m:val': sty}))
             if align:
                 pr.append(E('m:aln'))
-        run.append(E('w:rPr',
-                     E('w:rFonts', {'w:ascii': 'Cambria Math',
-                                    'w:hAnsi': 'Cambria Math'})))
+        wpr = E('w:rPr')
+        run.append(wpr)
+
+        wpr.append(E('w:rFonts', {'w:ascii': 'Cambria Math',
+                                  'w:hAnsi': 'Cambria Math'}))
+        if color is not None:
+            wpr.append(E('w:color', {'w:val': color}))
+
         run.append(E('m:t', text))
         return run
 

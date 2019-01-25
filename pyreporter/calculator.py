@@ -3,7 +3,7 @@ from typing import List
 from collections import OrderedDict
 
 __all__ = ['Variable', 'FractionVariable', 'Number', 'Unit',
-           'Formula', 'PiecewiseFormula', 'Calculator', 'TrailSolver',
+           'Formula', 'PiecewiseFormula', 'Calculator', 'TrailSolver', 'Equation',
            'FlatDiv', 'Sin', 'ASin', 'Cos', 'ACos', 'Tan', 'ATan', 'Cot', 'ACot',
            'Radical', 'Pr', 'Sq', 'Br', 'Sum']
 
@@ -165,6 +165,9 @@ class LesserThan(Expression):
     def visit(self, visitor):
         return visitor.visit_lesser_than(self.left, self.right)
 
+    def reverse(self):
+        return GreaterOrEqual(self.left, self.right)
+
 
 class LesserOrEqual(Expression):
     def calc(self):
@@ -172,6 +175,9 @@ class LesserOrEqual(Expression):
 
     def visit(self, visitor):
         return visitor.visit_lesser_or_equal(self.left, self.right)
+
+    def reverse(self):
+        return GreaterThan(self.left, self.right)
 
 
 class Equal(Expression):
@@ -181,6 +187,9 @@ class Equal(Expression):
     def visit(self, visitor):
         return visitor.visit_equal(self.left, self.right)
 
+    def reverse(self):
+        return NotEqual(self.left, self.right)
+
 
 class NotEqual(Expression):
     def calc(self):
@@ -188,6 +197,9 @@ class NotEqual(Expression):
 
     def visit(self, visitor):
         return visitor.visit_not_equal(self.left, self.right)
+
+    def reverse(self):
+        return Equal(self.left, self.right)
 
 
 class GreaterThan(Expression):
@@ -197,6 +209,9 @@ class GreaterThan(Expression):
     def visit(self, visitor):
         return visitor.visit_greater_than(self.left, self.right)
 
+    def reverse(self):
+        return LesserOrEqual(self.left, self.right)
+
 
 class GreaterOrEqual(Expression):
     def calc(self):
@@ -204,6 +219,9 @@ class GreaterOrEqual(Expression):
 
     def visit(self, visitor):
         return visitor.visit_greater_or_equal(self.left, self.right)
+
+    def reverse(self):
+        return LesserThan(self.left, self.right)
 
 
 class ToDegree(Expression):
@@ -314,7 +332,7 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=3, inform=None):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=3, inform=None, degree=False):
         super().__init__()
         self.symbol = symbol
         self.value = value
@@ -324,6 +342,7 @@ class Variable(Expression):
             unit = FlatDiv(unit.left, unit.right)
         self.unit = unit
         self.inform = inform
+        self.show_as_degree = degree
 
     def __repr__(self):
         if self.subscript is None:
@@ -343,9 +362,11 @@ class Variable(Expression):
         return OrderedDict({id(self): self})
 
     def copy(self):
-        return Variable(self.symbol, self.subscript, self.precision, self.unit)
+        return Variable(self.symbol, self.subscript, self.unit, self.precision, self.inform, self.show_as_degree)
 
     def copy_result(self):
+        if self.show_as_degree:
+            return Number(self.value * 180 / math.pi, 2, degree=True)
         return Number(self.value, self.precision)
 
     def calc(self):
@@ -368,15 +389,15 @@ class FractionVariable(Variable):
 
 
 class Number(Variable):
-    def __init__(self, value, precision=None):
+    def __init__(self, value, precision=None, degree=False):
         assert isinstance(value, float) or isinstance(value, int)
-        super().__init__('number', value=value, precision=precision)
+        super().__init__('number', value=value, precision=precision, degree=degree)
 
     def copy(self):
-        return Number(self.value, self.precision)
+        return Number(self.value, self.precision, self.show_as_degree)
 
     def visit(self, visitor):
-        return visitor.visit_number(self.value, self.precision)
+        return visitor.visit_number(self.value, self.precision, self.show_as_degree)
 
     def copy_result(self):
         return self.copy()
@@ -609,3 +630,31 @@ class TrailSolver(Calculator):
             max_iter -= 1
 
         return mid
+
+
+class Equation:
+    def __init__(self, exp, left_long=False, right_long=False):
+        assert (isinstance(exp, Equal)
+                or isinstance(exp, NotEqual)
+                or isinstance(exp, GreaterThan)
+                or isinstance(exp, GreaterOrEqual)
+                or isinstance(exp, LesserThan)
+                or isinstance(exp, LesserOrEqual))
+        self.equation = exp
+        left_var = Variable('L.H.')
+        right_var = Variable('R.H.')
+        self.left = Formula(left_var, exp.left, long=left_long)
+        self.right = Formula(right_var, exp.right, long=right_long)
+        self.result_equation = type(exp)(left_var, right_var)
+        self.satisfied = True
+
+    def calc(self):
+        self.left.calc()
+        self.right.calc()
+        self.satisfied = self.result_equation.calc()
+        return self.satisfied
+
+    def visit(self, visitor):
+        return visitor.visit_equation(self.equation, self.satisfied,
+                                      self.left, self.right,
+                                      self.result_equation)
