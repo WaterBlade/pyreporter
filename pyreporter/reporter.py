@@ -197,7 +197,7 @@ class Math(ContentRoot):
 
 class VariableValue(Math):
     def __init__(self, variable):
-        if variable.unit is None or variable.show_as_degree:
+        if variable.unit is None:
             super().__init__(variable, _MathText('='), variable.copy_result())
         else:
             super().__init__(variable, _MathText('='), variable.copy_result(), variable.unit)

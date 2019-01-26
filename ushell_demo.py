@@ -114,7 +114,7 @@ Sl = V('S', 'l', inform='受拉区面积对截面形心轴的静面矩', unit=U(
 
 Geo_calc = Calculator(sequence=False)
 Geo_calc.add(Formula(A, Sum(Ai, [Ai])))
-Geo_calc.add(Formula(y1, Sum(Ai * yci, [Ai, yci]) / A, long=True))
+Geo_calc.add(Formula(y1, 1/A * Pr(Sum(Ai * yci, [Ai, yci])), long=True))
 Geo_calc.add(Formula(y2, f + R1 + t0 - y1))
 Geo_calc.add(Formula(K, y1 - f))
 Geo_calc.add(Formula(I, Sum(Ai * Pr(y1 - yci) ** 2, [Ai, yci]) + Sum(Iti, [Iti]), long=True))
@@ -173,7 +173,7 @@ D_calc = Calculator(sequence=False)
 P_calc = Calculator(sequence=False)
 
 X1 = V('X', '1', inform='多余未知力')
-δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位', precision=4)
+δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位')
 Δ1P = V('Δ', '1P', inform='所有荷载引起的水平变位')
 Δ1G0 = V('Δ', V('1G', '0'), inform='附加集中力引起的水平变位')
 Δ1M0 = V('Δ', V('1M', '0'), inform='附加弯矩引起的水平变位')
@@ -235,7 +235,7 @@ My_calc.add(PiecewiseFormula(My,
                              [False, True]))
 
 Mj = V('M', 'φ', inform='圆弧段弯矩', unit=U('kN') * U('m'))
-φ = V('φ', inform='圆弧段计算内力截面位置对应的圆心角', unit=U('rad'), degree=True)
+φ = V('φ', inform='圆弧段计算内力截面位置对应的圆心角', unit=U('rad'))
 MM0 = V('M', V('M', '0'), inform='附加弯矩引起的截面弯矩', unit=U('kN') * U('m'))
 MG0 = V('M', V('G', '0'), inform='附加力引起的截面弯矩', unit=U('kN') * U('m'))
 Mh = V('M', 'h', inform='槽身自重引起的截面弯矩', unit=U('kN') * U('m'))

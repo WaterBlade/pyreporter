@@ -854,13 +854,11 @@ class DocX:
         else:
             return [self._make_m_sSub(var, sub)]
 
-    def visit_number(self, value, precision, degree):
+    def visit_number(self, value, precision):
         if abs(value) < 1e-10:
             ret = [self._make_m_r('0')]
         elif abs(value) > 10000 or abs(value) < 0.001 and value != 0:
-            sup = int(math.log10(abs(value)))
-            if sup < 0:
-                sup -= 1
+            sup = math.floor(math.log10(abs(value)))
             base = value / math.pow(10, sup)
             ret = [self._make_m_r(f'{base:.2f}'),
                    self._make_m_r('⋅', sty='p'),
@@ -868,12 +866,17 @@ class DocX:
         else:
             if precision is None:
                 value = f'{value}'
+            elif precision == 'auto':
+                if isinstance(value, int):
+                    value = f'{value}'
+                elif abs(value) > 1:
+                    value = f'{value:.3f}'
+                else:
+                    precision = abs(math.floor(math.log10(abs(value)))) + 2
+                    value = f'{value:.{precision}f}'
             else:
                 value = f'{value:.{precision}f}'
             ret = [self._make_m_r(value)]
-
-        if degree:
-            ret += [self._make_m_r('°', sty='p')]
 
         return ret
 

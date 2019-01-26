@@ -332,7 +332,7 @@ class Br(Expression):
 
 
 class Variable(Expression):
-    def __init__(self, symbol, subscript=None, value=None, unit=None, precision=3, inform=None, degree=False):
+    def __init__(self, symbol, subscript=None, value=None, unit=None, precision='auto', inform=None):
         super().__init__()
         self.symbol = symbol
         self.value = value
@@ -342,7 +342,6 @@ class Variable(Expression):
             unit = FlatDiv(unit.left, unit.right)
         self.unit = unit
         self.inform = inform
-        self.show_as_degree = degree
 
     def __repr__(self):
         if self.subscript is None:
@@ -362,11 +361,9 @@ class Variable(Expression):
         return OrderedDict({id(self): self})
 
     def copy(self):
-        return Variable(self.symbol, self.subscript, self.unit, self.precision, self.inform, self.show_as_degree)
+        return Variable(self.symbol, self.subscript, self.unit, self.precision, self.inform)
 
     def copy_result(self):
-        if self.show_as_degree:
-            return Number(self.value * 180 / math.pi, 2, degree=True)
         return Number(self.value, self.precision)
 
     def calc(self):
@@ -381,23 +378,23 @@ class Variable(Expression):
 
 class FractionVariable(Variable):
     def __init__(self, symbol, subscript=None, value=None, unit=None, inform=None):
-        super().__init__(symbol=symbol, subscript=subscript, value=value, unit=unit, precision=0, inform=inform)
+        super().__init__(symbol=symbol, subscript=subscript, value=value, unit=unit, inform=inform)
 
     def copy_result(self):
-        den = 1 / self.value
-        return 1 / Number(den, precision=0)
+        den = round(1 / self.value)
+        return 1 / Number(den)
 
 
 class Number(Variable):
-    def __init__(self, value, precision=None, degree=False):
+    def __init__(self, value, precision=None):
         assert isinstance(value, float) or isinstance(value, int)
-        super().__init__('number', value=value, precision=precision, degree=degree)
+        super().__init__('number', value=value, precision=precision)
 
     def copy(self):
-        return Number(self.value, self.precision, self.show_as_degree)
+        return Number(self.value, self.precision)
 
     def visit(self, visitor):
-        return visitor.visit_number(self.value, self.precision, self.show_as_degree)
+        return visitor.visit_number(self.value, self.precision)
 
     def copy_result(self):
         return self.copy()
@@ -447,7 +444,7 @@ class Sum(Expression):
 
 
 class SerialVariable(Variable):
-    def __init__(self, symbol, subscript=None, value=None, index='i', unit=None, precision=2, inform=None):
+    def __init__(self, symbol, subscript=None, value=None, index='i', unit=None, precision='auto', inform=None):
         super().__init__(symbol=symbol, subscript=subscript, value=value,
                          unit=unit, precision=precision, inform=inform)
         self.index = index
@@ -633,7 +630,7 @@ class TrailSolver(Calculator):
 
 
 class Equation:
-    def __init__(self, exp, left_long=False, right_long=False):
+    def __init__(self, exp, long=False):
         assert (isinstance(exp, Equal)
                 or isinstance(exp, NotEqual)
                 or isinstance(exp, GreaterThan)
@@ -641,20 +638,30 @@ class Equation:
                 or isinstance(exp, LesserThan)
                 or isinstance(exp, LesserOrEqual))
         self.equation = exp
-        left_var = Variable('L.H.')
-        right_var = Variable('R.H.')
-        self.left = Formula(left_var, exp.left, long=left_long)
-        self.right = Formula(right_var, exp.right, long=right_long)
-        self.result_equation = type(exp)(left_var, right_var)
+        self.left = Variable('left')
+        self.right = Variable('right')
+        self.result_equation = None  # type: Expression
         self.satisfied = True
+        self.long = long
 
     def calc(self):
-        self.left.calc()
-        self.right.calc()
-        self.satisfied = self.result_equation.calc()
+        self.satisfied = self.equation.calc()
+        self.left.set(self.equation.left.calc())
+        self.right.set(self.equation.right.calc())
         return self.satisfied
 
     def visit(self, visitor):
+        # TODO: need fix
+        if not self.satisfied:
+            result_equation = self.equation.reverse()
+        else:
+            result_equation = self.equation
+
+        if isinstance(result_equation, Equal):
+            result_sign = 'equal'
+        elif isinstance(result_equation, NotEqual):
+            result_sign = 'not equal'
         return visitor.visit_equation(self.equation, self.satisfied,
                                       self.left, self.right,
-                                      self.result_equation)
+                                      result_equation,
+                                      result_sign)
