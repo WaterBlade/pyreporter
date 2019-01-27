@@ -16,19 +16,24 @@ def wrapper_number(number):
 
 
 class Expression:
-    def __init__(self, left=None, right=None):
+    def __init__(self, left=None, right=None, value=None):
         self.left = wrapper_number(left)
         self.right = wrapper_number(right)
+        self.value = value
 
     def copy(self):
         left = self.left.copy() if self.left is not None else None
         right = self.right.copy() if self.right is not None else None
+        return type(self)(left, right, self.value)
+
+    def expression_in_number(self):
+        left = self.left.expression_in_number() if self.left is not None else None
+        right = self.right.expression_in_number() if self.right is not None else None
         return type(self)(left, right)
 
-    def copy_result(self):
-        left = self.left.copy_result() if self.left is not None else None
-        right = self.right.copy_result() if self.right is not None else None
-        return type(self)(left, right)
+    def value_in_number(self):
+        assert self.value is not None
+        return Number(self.value, 'auto')
 
     def calc(self):
         pass
@@ -96,7 +101,8 @@ class Expression:
 
 class Negative(Expression):
     def calc(self):
-        return - self.left.calc()
+        self.value = -self.left.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_negative(self.left)
@@ -104,7 +110,8 @@ class Negative(Expression):
 
 class Add(Expression):
     def calc(self):
-        return self.left.calc() + self.right.calc()
+        self.value = self.left.calc() + self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_add(self.left, self.right)
@@ -112,7 +119,8 @@ class Add(Expression):
 
 class Sub(Expression):
     def calc(self):
-        return self.left.calc() - self.right.calc()
+        self.value = self.left.calc() - self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_sub(self.left, self.right)
@@ -120,7 +128,8 @@ class Sub(Expression):
 
 class Mul(Expression):
     def calc(self):
-        return self.left.calc() * self.right.calc()
+        self.value = self.left.calc() * self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_mul(self.left, self.right)
@@ -128,7 +137,8 @@ class Mul(Expression):
 
 class Div(Expression):
     def calc(self):
-        return self.left.calc() / self.right.calc()
+        self.value = self.left.calc() / self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_div(self.left, self.right)
@@ -136,7 +146,8 @@ class Div(Expression):
 
 class FlatDiv(Expression):
     def calc(self):
-        return self.left.calc() / self.right.calc()
+        self.value = self.left.calc() / self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_flat_div(self.left, self.right)
@@ -144,7 +155,8 @@ class FlatDiv(Expression):
 
 class Pow(Expression):
     def calc(self):
-        return math.pow(self.left.calc(), self.right.calc())
+        self.value = math.pow(self.left.calc(), self.right.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_pow(self.left, self.right)
@@ -152,7 +164,8 @@ class Pow(Expression):
 
 class Radical(Expression):
     def calc(self):
-        return math.pow(self.left.calc(), 1 / self.right.calc())
+        self.value = math.pow(self.left.calc(), 1 / self.right.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_radical(self.left, self.right)
@@ -160,73 +173,98 @@ class Radical(Expression):
 
 class LesserThan(Expression):
     def calc(self):
-        return self.left.calc() < self.right.calc()
+        self.value = self.left.calc() < self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_lesser_than(self.left, self.right)
 
     def reverse(self):
-        return GreaterOrEqual(self.left, self.right)
+        return GreaterOrEqual(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '<'
 
 
 class LesserOrEqual(Expression):
     def calc(self):
-        return self.left.calc() <= self.right.calc()
+        self.value = self.left.calc() <= self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_lesser_or_equal(self.left, self.right)
 
     def reverse(self):
-        return GreaterThan(self.left, self.right)
+        return GreaterThan(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '≤'
 
 
 class Equal(Expression):
     def calc(self):
-        return self.left.calc() == self.right.calc()
+        self.value = self.left.calc() == self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_equal(self.left, self.right)
 
     def reverse(self):
-        return NotEqual(self.left, self.right)
+        return NotEqual(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '='
 
 
 class NotEqual(Expression):
     def calc(self):
-        return self.left.calc() != self.right.calc()
+        self.value = self.left.calc() != self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_not_equal(self.left, self.right)
 
     def reverse(self):
-        return Equal(self.left, self.right)
+        return Equal(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '≠'
 
 
 class GreaterThan(Expression):
     def calc(self):
-        return self.left.calc() > self.right.calc()
+        self.value = self.left.calc() > self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_greater_than(self.left, self.right)
 
     def reverse(self):
-        return LesserOrEqual(self.left, self.right)
+        return LesserOrEqual(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '>'
 
 
 class GreaterOrEqual(Expression):
     def calc(self):
-        return self.left.calc() >= self.right.calc()
+        self.value = self.left.calc() >= self.right.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_greater_or_equal(self.left, self.right)
 
     def reverse(self):
-        return LesserThan(self.left, self.right)
+        return LesserThan(self.left, self.right, None if self.value is None else not self.value)
+
+    def get_sign(self):
+        return '≥'
 
 
 class ToDegree(Expression):
     def calc(self):
-        return math.degrees(self.left.calc())
+        self.value = math.degrees(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return self.left.visit(visitor)
@@ -234,7 +272,8 @@ class ToDegree(Expression):
 
 class ToRadian(Expression):
     def calc(self):
-        return math.radians(self.left.calc())
+        self.value = math.radians(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return self.left.visit(visitor)
@@ -242,7 +281,8 @@ class ToRadian(Expression):
 
 class Sin(Expression):
     def calc(self):
-        return math.sin(self.left.calc())
+        self.value = math.sin(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_sin(self.left)
@@ -250,7 +290,8 @@ class Sin(Expression):
 
 class Cos(Expression):
     def calc(self):
-        return math.cos(self.left.calc())
+        self.value = math.cos(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_cos(self.left)
@@ -258,7 +299,8 @@ class Cos(Expression):
 
 class Tan(Expression):
     def calc(self):
-        return math.tan(self.left.calc())
+        self.value = math.tan(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_tan(self.left)
@@ -266,7 +308,8 @@ class Tan(Expression):
 
 class Cot(Expression):
     def calc(self):
-        return 1 / math.tan(self.left.calc())
+        self.value = 1 / math.tan(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_cot(self.left)
@@ -274,7 +317,8 @@ class Cot(Expression):
 
 class ASin(Expression):
     def calc(self):
-        return math.asin(self.left.calc())
+        self.value = math.asin(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_arcsin(self.left)
@@ -282,7 +326,8 @@ class ASin(Expression):
 
 class ACos(Expression):
     def calc(self):
-        return math.acos(self.left.calc())
+        self.value = math.acos(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_arccos(self.left)
@@ -290,7 +335,8 @@ class ACos(Expression):
 
 class ATan(Expression):
     def calc(self):
-        return math.atan(self.left.calc())
+        self.value = math.atan(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_arctan(self.left)
@@ -298,7 +344,8 @@ class ATan(Expression):
 
 class ACot(Expression):
     def calc(self):
-        return math.pi - math.atan(self.left.calc())
+        self.value = math.pi - math.atan(self.left.calc())
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_arccot(self.left)
@@ -307,7 +354,8 @@ class ACot(Expression):
 # parenthesis: ()
 class Pr(Expression):
     def calc(self):
-        return self.left.calc()
+        self.value = self.left.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_parenthesis(self.left)
@@ -316,7 +364,8 @@ class Pr(Expression):
 # square bracket: []
 class Sq(Expression):
     def calc(self):
-        return self.left.calc()
+        self.value = self.left.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_square_bracket(self.left)
@@ -325,7 +374,8 @@ class Sq(Expression):
 # brace: {}
 class Br(Expression):
     def calc(self):
-        return self.left.calc()
+        self.value = self.left.calc()
+        return self.value
 
     def visit(self, visitor):
         return visitor.visit_brace(self.left)
@@ -363,7 +413,7 @@ class Variable(Expression):
     def copy(self):
         return Variable(self.symbol, self.subscript, self.unit, self.precision, self.inform)
 
-    def copy_result(self):
+    def expression_in_number(self):
         return Number(self.value, self.precision)
 
     def calc(self):
@@ -380,7 +430,7 @@ class FractionVariable(Variable):
     def __init__(self, symbol, subscript=None, value=None, unit=None, inform=None):
         super().__init__(symbol=symbol, subscript=subscript, value=value, unit=unit, inform=inform)
 
-    def copy_result(self):
+    def expression_in_number(self):
         den = round(1 / self.value)
         return 1 / Number(den)
 
@@ -396,7 +446,7 @@ class Number(Variable):
     def visit(self, visitor):
         return visitor.visit_number(self.value, self.precision)
 
-    def copy_result(self):
+    def expression_in_number(self):
         return self.copy()
 
     def get_variable_dict(self):
@@ -428,15 +478,15 @@ class Sum(Expression):
             ret += self.left.calc()
         return ret
 
-    def copy_result(self):
+    def expression_in_number(self):
         ret = None
         for i in range(self.serial_length):
             for var in self.serial_variable_list:
                 var.set_current(i)
             if ret is None:
-                ret = self.left.copy_result()
+                ret = self.left.expression_in_number()
             else:
-                ret += self.left.copy_result()
+                ret += self.left.expression_in_number()
         return ret
 
     def visit(self, visitor):
@@ -470,8 +520,8 @@ class SerialVariable(Variable):
     def set_current(self, index):
         self._curr = self._variable_list[index]
 
-    def copy_result(self):
-        return self._curr.copy_result()
+    def expression_in_number(self):
+        return self._curr.expression_in_number()
 
     def visit(self, visitor):
         return visitor.visit_serial_variable(self.symbol, self.subscript, self.index)
@@ -638,30 +688,34 @@ class Equation:
                 or isinstance(exp, LesserThan)
                 or isinstance(exp, LesserOrEqual))
         self.equation = exp
-        self.left = Variable('left')
-        self.right = Variable('right')
-        self.result_equation = None  # type: Expression
-        self.satisfied = True
+        self.result_equation = exp
         self.long = long
 
     def calc(self):
-        self.satisfied = self.equation.calc()
-        self.left.set(self.equation.left.calc())
-        self.right.set(self.equation.right.calc())
-        return self.satisfied
+        if not self.equation.calc():
+            self.result_equation = self.equation.reverse()
+        return self.equation.value
 
     def visit(self, visitor):
-        # TODO: need fix
-        if not self.satisfied:
-            result_equation = self.equation.reverse()
-        else:
-            result_equation = self.equation
+        visitor.visit_equation(self.result_equation.left,
+                               self.result_equation.right,
+                               self.equation.get_sign(),
+                               self.result_equation.get_sign(),
+                               self.long)
 
-        if isinstance(result_equation, Equal):
-            result_sign = 'equal'
-        elif isinstance(result_equation, NotEqual):
-            result_sign = 'not equal'
-        return visitor.visit_equation(self.equation, self.satisfied,
-                                      self.left, self.right,
-                                      result_equation,
-                                      result_sign)
+
+class Equations:
+    def __init__(self):
+        self.equation_list = list()
+
+    def add(self, eq):
+        self.equation_list.append(eq)
+
+    def calc(self):
+        for eq in self.equation_list:
+            if not eq.calc():
+                return False
+        return True
+
+    def visit(self, visitor):
+        visitor.visit_equations(self.equation_list)

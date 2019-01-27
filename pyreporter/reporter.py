@@ -3,6 +3,7 @@ from PIL import Image
 from io import BytesIO
 from typing import Union, List
 from collections import OrderedDict
+from .calculator import Variable
 
 
 __all__ = ['Report', 'DefaultCover',
@@ -198,9 +199,9 @@ class Math(ContentRoot):
 class VariableValue(Math):
     def __init__(self, variable):
         if variable.unit is None:
-            super().__init__(variable, _MathText('='), variable.copy_result())
+            super().__init__(variable, _MathText('='), variable.expression_in_number())
         else:
-            super().__init__(variable, _MathText('='), variable.copy_result(), variable.unit)
+            super().__init__(variable, _MathText('='), variable.expression_in_number(), variable.unit)
 
 
 class Figure(ContentRoot):
@@ -326,8 +327,12 @@ class Definition(ContextRoot):
         for formula in formula_list:
             formula.visit(self)
 
-    def visit_equation(self, equation, satisfied, left, right, result_equation):
-        self.content.append(Math(equation))
+    def visit_equation(self, left, right, def_sign, ret_sign, long):
+        self.content.append(Math(left, _MathText(def_sign, align=True), right))
+
+    def visit_equations(self, list_):
+        for eq in list_:
+            eq.visit(self)
 
 
 class Procedure(ContextRoot):
@@ -343,13 +348,20 @@ class Procedure(ContextRoot):
 
         if long:
             ret.append(Math(variable, _MathText('=', align=True), expression))
-            ret.append(Math(_MathText('=', align=True), expression.copy_result()))
-            ret.append(Math(_MathText('=', align=True), variable.copy_result()))
+            if not isinstance(expression, Variable):
+                ret.append(Math(_MathText('=', align=True), expression.expression_in_number()))
+            ret.append(Math(_MathText('=', align=True), variable.expression_in_number()))
         else:
-            ret.append(Math(variable,
-                            _MathText('=', align=True), expression,
-                            _MathText('='), expression.copy_result(),
-                            _MathText('='), variable.copy_result()))
+            m = Math()
+            m.append(variable)
+            m.append(_MathText('=', align=True))
+            m.append(expression)
+            if not isinstance(expression, Variable):
+                m.append(_MathText('='))
+                m.append(expression.expression_in_number())
+            m.append(_MathText('='))
+            m.append(variable.expression_in_number())
+            ret.append(m)
 
         if variable.unit is not None:
             ret[-1].append(variable.unit)
@@ -371,17 +383,39 @@ class Procedure(ContextRoot):
         for formula in list_:
             formula.visit(self)
 
-    def visit_equation(self, equation, satisfied, left, right, result_equation):
-        left.visit(self)
-        right.visit(self)
+    def visit_equation(self, left, right, def_sign, ret_sign, long):
+        ret = list()
+        if not long:
+            m = Math()
+            m.append(left)
+            m.append(_MathText('=', sty='p'))
+            m.append(left.expression_in_number())
+            if not isinstance(left, Variable):
+                m.append(_MathText('=', sty='p'))
+                m.append(left.value_in_number())
+            m.append(_MathText(ret_sign, sty='p'))
+            m.append(right)
+            m.append(_MathText('=', sty='p'))
+            m.append(right.expression_in_number())
+            if not isinstance(right, Variable):
+                m.append(_MathText('=', sty='p'))
+                m.append(right.value_in_number())
+            ret.append(m)
+        else:
+            ret.append(Math(left))
+            ret.append(Math(_MathText('=', sty='p'), left.expression_in_number()))
+            if not isinstance(left, Variable):
+                ret.append(Math(_MathText('=', sty='p'), left.value_in_number()))
+            ret.append(_MathText(ret_sign, sty='p'))
+            ret.append(Math(right))
+            ret.append(Math(_MathText('=', sty='p'), right.expression_in_number()))
+            if not isinstance(right, Variable):
+                ret.append(Math(_MathText('=', sty='p'), right.value_in_number()))
+        self.content.extend(ret)
 
-        result = _MathText('满足要求', sty='p')
-        if not satisfied:
-            result_equation = result_equation.reverse()
-            result = _MathText('不满足要求', sty='p', color='FF0000')
-
-        self.content.append(Math(result_equation.copy_result()))
-        self.content.append(Math(result))
+    def visit_equations(self, list_):
+        for eq in list_:
+            eq.visit(self)
 
 
 class Note(ContextRoot):
@@ -421,8 +455,13 @@ class Note(ContextRoot):
         for formula in formula_list:
             formula.visit(self)
 
-    def visit_equation(self, equation, satisfied, left, right, result_equation):
-        self.variable_dict.update(equation.get_variable_dict())
+    def visit_equation(self, left, right, def_sign, ret_sign, long):
+        self.variable_dict.update(left.get_variable_dict())
+        self.variable_dict.update(right.get_variable_dict())
+
+    def visit_equations(self, list_):
+        for eq in list_:
+            eq.visit(self)
 
 
 class StandaloneFigure(ContextRoot):
@@ -560,7 +599,4 @@ class _MultiLine:
 
     def visit(self, visitor):
         return visitor.visit_multi_line(self._list, self.included)
-
-
-
 
