@@ -2,7 +2,7 @@ import math
 from typing import List
 from collections import OrderedDict
 
-__all__ = ['Variable', 'FractionVariable', 'Number', 'Unit',
+__all__ = ['Variable', 'SerialVariable','FractionVariable', 'Number', 'Unit',
            'Formula', 'PiecewiseFormula', 'Calculator', 'TrailSolver',
            'FlatDiv', 'Sin', 'ASin', 'Cos', 'ACos', 'Tan', 'ATan', 'Cot', 'ACot',
            'Radical', 'Pr', 'Sq', 'Br', 'Sum']
@@ -346,6 +346,7 @@ class Variable(Expression):
         return Variable(self.symbol, self.subscript, self.precision, self.unit)
 
     def copy_result(self):
+        assert self.value is not None
         return Number(self.value, self.precision)
 
     def calc(self):
@@ -376,6 +377,7 @@ class Number(Variable):
         return Number(self.value, self.precision)
 
     def visit(self, visitor):
+        assert self.value is not None
         return visitor.visit_number(self.value, self.precision)
 
     def copy_result(self):
@@ -403,23 +405,29 @@ class Sum(Expression):
         self.expanded = None
 
     def calc(self):
+        length = len(self.serial_variable_list[0])
         ret = 0
-        for i in range(self.serial_length):
+        for i in range(length):
             for var in self.serial_variable_list:
                 var.set_current(i)
             ret += self.left.calc()
         return ret
 
     def copy_result(self):
+        length = len(self.serial_variable_list[0])
         ret = None
-        for i in range(self.serial_length):
+        for i in range(length):
             for var in self.serial_variable_list:
                 var.set_current(i)
             if ret is None:
                 ret = self.left.copy_result()
+                print(ret)
             else:
                 ret += self.left.copy_result()
-        return ret
+        if ret is None:
+            return Number(0)
+        else:
+            return ret
 
     def visit(self, visitor):
         return visitor.visit_sum(self.left)

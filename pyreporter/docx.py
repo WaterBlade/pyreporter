@@ -956,7 +956,7 @@ class DocX:
     def _make_m_func(self, name, exp):
         return E('m:func',
                  E('m:fName', self._make_m_r(name, sty='p')),
-                 E('m:e', exp.visit(self)))
+                 E('m:e', self._make_m_d(exp, left='(', right=')')))
 
     def _make_m_d(self, *exps, left=None, right=None):
         d = E('m:d')
