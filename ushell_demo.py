@@ -2,7 +2,7 @@ from pyreporter import (Report, DefaultCover, Paragraph, Content, Math,
                         Definition, Procedure, Note, VariableValue)
 from pyreporter.calculator import (Variable, FractionVariable, SerialVariable, Number, Unit,
                                    Pr, FlatDiv, Sq,
-                                   Formula, PiecewiseFormula, Calculator,
+                                   Formula, PiecewiseFormula, Calculator, Equation,
                                    Cos, ACos, Sin, ASin, ATan, Sum, Radical)
 import math
 
@@ -114,7 +114,7 @@ Sl = V('S', 'l', inform='受拉区面积对截面形心轴的静面矩', unit=U(
 
 Geo_calc = Calculator(sequence=False)
 Geo_calc.add(Formula(A, Sum(Ai, [Ai])))
-Geo_calc.add(Formula(y1, Sum(Ai * yci, [Ai, yci]) / A, long=True))
+Geo_calc.add(Formula(y1, 1/A * Pr(Sum(Ai * yci, [Ai, yci])), long=True))
 Geo_calc.add(Formula(y2, f + R1 + t0 - y1))
 Geo_calc.add(Formula(K, y1 - f))
 Geo_calc.add(Formula(I, Sum(Ai * Pr(y1 - yci) ** 2, [Ai, yci]) + Sum(Iti, [Iti]), long=True))
@@ -137,17 +137,21 @@ F_calc.add(Formula(Q, q * L / 2))
 
 # U形槽纵向结构配筋计算
 Zl = V('Z', 'l', inform='简支梁计算受拉区的总拉力', unit=U('kN'))
-Ag = V('A', 'g', inform='受拉钢筋总面积', unit=U('mm') ** 2)
+As = V('A', 's', inform='受拉钢筋总面积', unit=U('mm') ** 2)
 fy = V('f', 'y', inform='钢筋受拉强度设计值', unit=U('N') / U('mm') ** 2)
 Kg = V('K', 'g', inform='结构安全系数')
 
-St_calc = Calculator()
-St_calc.add(Formula(Ag, Kg * (1000 * Zl / fy)))
-St_calc.add(Formula(Zl, M / I * Sl))
+As_calc = Calculator()
+As_calc.add(Formula(As, Kg * (1000 * Zl / fy)))
+As_calc.add(Formula(Zl, M / I * Sl))
 
 # U形槽正截面抗裂验算
-σl = V('σ', 'l', inform='正截面最大拉应力', unit=U('kPa'))
-ft = V('f', 'c', inform='混凝土抗拉强度')
+γm = V('γ', 'm', inform='截面抵抗矩塑形指数', precision=2)
+αct = V('α', 'ct', inform='混凝土拉应力限值系数', precision=2)
+ftk = V('f', 'tk', inform='混凝土轴心抗拉强度标准值', unit=U('kPa'))
+
+Crack_calc = Equation((M*y2)/(γm*I) <= αct*ftk)
+
 
 # U形槽横向结构计算
 # 剪力计算
@@ -169,7 +173,7 @@ D_calc = Calculator(sequence=False)
 P_calc = Calculator(sequence=False)
 
 X1 = V('X', '1', inform='多余未知力')
-δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位', precision=4)
+δ11 = V('δ', '11', inform='单位多余未知力作用时对应的水平变位')
 Δ1P = V('Δ', '1P', inform='所有荷载引起的水平变位')
 Δ1G0 = V('Δ', V('1G', '0'), inform='附加集中力引起的水平变位')
 Δ1M0 = V('Δ', V('1M', '0'), inform='附加弯矩引起的水平变位')
@@ -248,7 +252,7 @@ Mji_calc = Calculator(sequence=False)
 Mji_calc.add(Formula(MM0, M0))
 Mji_calc.add(Formula(MG0, -G0 * R * Pr(1 - Cos(φ))))
 Mji_calc.add(Formula(Mh,
-                     -γh * t * R ** 2 * Sq(f / R * Pr(1 - Cos(φ))
+                     -γh * t * R ** 2 * Sq(β * Pr(1 - Cos(φ))
                                            + Sin(φ)
                                            - φ * Cos(φ)),
                      long=True))
@@ -276,7 +280,8 @@ Ny_calc.add(PiecewiseFormula(Ny,
                              [G0+γh*Pr(t+a)*b-T1,
                               G0+γh*Pr(t*f+a*b)-T],
                              [y <= h - h1,
-                              y > h - h1]))
+                              y > h - h1],
+                             [True, True]))
 
 # 弧段部分
 Nj = V('N', 'φ', inform='圆弧段轴力', unit=U('kN'))
@@ -285,6 +290,23 @@ Nh = V('N', 'h', inform='槽身自重引起的截面轴力', unit=U('kN'))
 NW = V('N', 'W', inform='水压力引起的截面轴力', unit=U('kN'))
 Nτ = V('N', 'τ', inform='剪应力引起的截面轴力', unit=U('kN'))
 NX1 = V('N', V('X', '1'), inform='多余未知力引起的截面轴力', unit=U('kN'))
+
+Nj_calc = Calculator()
+Nj_calc.add(Formula(Nj, NG0+Nh+NW+Nτ+NX1, long=True))
+
+Nji_calc = Calculator(sequence=False)
+Nji_calc.add(Formula(NG0, G0 * Cos(φ)))
+Nji_calc.add(Formula(Nh, γh * t * R * Pr(β + φ) * Cos(φ), long=True))
+Nji_calc.add(Formula(NW,
+                     1 / N(2) * γ * R0 ** 2 * φ * Cos(φ)
+                     - 1 / N(2) * γ * Pr(R0 ** 2 + h1 ** 2) * Sin(φ)
+                     - γ * h1 * R0 * Pr(1 - Cos(φ)),
+                     long=True))
+Nji_calc.add(Formula(Nτ,
+                     -(q * t / (2 * I)) * R ** 3 * Sq(φ * Cos(φ) + Pr(1 - Pi * λ) * Sin(φ) - 2 * λ * Pr(Cos(φ) - 1))
+                     - T * Cos(φ),
+                     long=True))
+Nji_calc.add(Formula(NX1, X1 * Sin(φ)))
 
 
 def value_para(var_list, def_=None):
@@ -358,16 +380,27 @@ if __name__ == '__main__':
     rep.add(Procedure(F_calc))
 
     rep.add_paragraph('纵向受拉钢筋配筋按下式计算：')
-    st_def = Definition(St_calc)
+    st_def = Definition(As_calc)
     rep.add(st_def)
-    rep.add(Note(St_calc))
+    rep.add(Note(As_calc))
 
     Kg.set(1.1)
     fy.set(300)
-    St_calc.calc()
+    As_calc.calc()
 
     rep.add(value_para([Kg, fy], st_def))
-    rep.add(Procedure(St_calc))
+    rep.add(Procedure(As_calc))
+
+    rep.add_paragraph('纵向抗裂验算按下式计算：')
+    rep.add(Definition(Crack_calc))
+    rep.add(Note(Crack_calc))
+
+    γm.set(1.35)
+    αct.set(0.85)
+    ftk.set(2.01e3)
+
+    Crack_calc.calc()
+    rep.add(Procedure(Crack_calc))
 
     rep.add_heading('横向结构计算', level=1)
     rep.add_paragraph('横向结构计算采用力法进行。')
@@ -420,27 +453,41 @@ if __name__ == '__main__':
     rep.add_heading('截面内力计算', level=3)
 
     rep.add_heading('直段内力计算', level=4)
-    rep.add_paragraph('根据《取水输水建筑物丛书——渡槽》，直段内力的计算公式如下：')
+    rep.add_paragraph('根据《取水输水建筑物丛书——渡槽》，直段弯矩的计算公式如下：')
     rep.add(Definition(My_calc))
     rep.add(Note(My_calc))
+    rep.add_paragraph('直段轴力计算公式如下：')
+    rep.add(Definition(Ny_calc))
+    rep.add(Note(Ny_calc))
 
     rep.add_paragraph('带入不同值进行计算。')
 
     for k in range(5):
         y.set(h * k / 4)
+        rep.add_heading(Content(Value(y), '截面内力'), level=5)
         My_calc.calc()
-        rep.add_paragraph('当', Value(y), '时，直段内弯矩结算结果及过程如下：')
+        Ny_calc.calc()
+        rep.add_paragraph('弯矩：')
         rep.add(Procedure(My_calc))
+        rep.add_paragraph('轴力：')
+        rep.add(Procedure(Ny_calc))
 
     # TODO:考虑添加一系列计算功能，针对一个参数范围，计算多个结果。
 
     rep.add_heading('弧段内力计算', level=4)
-    rep.add_paragraph('根据《取水输水建筑物丛书——渡槽》，直段内力的计算公式如下：')
+    rep.add_paragraph('根据《取水输水建筑物丛书——渡槽》，弧段弯矩的计算公式如下：')
     rep.add(Definition(Mj_calc))
     rep.add(Note(Mj_calc))
     rep.add_paragraph('各弯矩分量计算式如下：')
     rep.add(Definition(Mji_calc))
     rep.add(Note(Mji_calc))
+
+    rep.add_paragraph('弧段轴力的计算公式如下：')
+    rep.add(Definition(Nj_calc))
+    rep.add(Note(Nj_calc))
+    rep.add_paragraph('各弯矩分量计算式如下：')
+    rep.add(Definition(Nji_calc))
+    rep.add(Note(Nji_calc))
 
     rep.add_paragraph('带入不同值进行计算。')
 
@@ -449,17 +496,25 @@ if __name__ == '__main__':
         phi = math.pi * k / 12
         φ.set(phi)
         Mji_calc.calc()
-        value = Mj_calc.calc()
-        rep.add_heading(Content(Value(φ), '截面弯矩'), level=5)
+        Nji_calc.calc()
+        M_value = Mj_calc.calc()
+        N_value = Nj_calc.calc()
+        rep.add_heading(Content(Value(φ), '截面内力'), level=5)
         rep.add_paragraph('当', Value(φ), '时，弧段内弯矩各分量结算结果及过程如下：')
         rep.add(Procedure(Mji_calc))
         rep.add_paragraph('截面弯矩计算结果为：')
         rep.add(Procedure(Mj_calc))
-        value_list.append([f'{phi:.2f}', f'{value:.2f}'])
+        rep.add_paragraph('当', Value(φ), '时，弧段内轴力各分量结算结果及过程如下：')
+        rep.add(Procedure(Nji_calc))
+        rep.add_paragraph('截面弯矩计算结果为：')
+        rep.add(Procedure(Nj_calc))
+        value_list.append([f'{round(phi*180/math.pi)}', f'{M_value:.3f}', f'{N_value:.3f}'])
 
     rep.add_paragraph('结果汇总如下：')
     rep.add_table(
-        [[Content('角度（', Math(Unit('rad')), '）'), Content('截面弯矩（', Math(Unit('kN') * Unit('m')), '）')]] + value_list,
+        [[Content('角度'),
+          Content('截面弯矩（', Math(Unit('kN') * Unit('m')), '）'),
+          Content('截面轴力（', Math(Unit('kN')), '）')]] + value_list,
         title='弧段弯矩计算值')
 
     rep.save('ushell_demo.docx')
