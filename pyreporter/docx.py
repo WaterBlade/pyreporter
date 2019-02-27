@@ -1,4 +1,5 @@
-from xml.etree.ElementTree import tostring, Element
+from xml.etree.ElementTree import tostring
+from xml.etree.ElementTree import Element as BaseElement
 from zipfile import ZipFile, ZIP_DEFLATED
 from collections import namedtuple
 import math
@@ -17,6 +18,35 @@ MIN_TABLE_CELL_WIDTH = 1600
 # visitor will return list of element.
 # not all visitor will return.
 # only the Content class visitor will return.
+class Element(BaseElement):
+    def add(self, item):
+        if isinstance(item, Element):
+            self.append(item)
+        elif isinstance(item, Composite):
+            self.extend(item.elements)
+        else:
+            raise RuntimeError()
+
+
+class Composite:
+    def __init__(self, *items):
+        self.elements = list()
+        for item in items:
+            self.add(item)
+
+    def add(self, item):
+        if isinstance(item, Element):
+            self.elements.append(item)
+        elif isinstance(item, Composite):
+            self.elements.extend(item.elements)
+        else:
+            raise RuntimeError(f'Unknown type: {type(item)}')
+
+    def __iter__(self):
+        return iter(self.elements)
+
+    def __len__(self):
+        return len(self.elements)
 
 
 def make_element(tag, *items) -> Element:
@@ -29,13 +59,14 @@ def make_element(tag, *items) -> Element:
             last_ele = item
         elif isinstance(item, dict):
             ele.attrib.update(item)
+        elif isinstance(item, Composite):
+            ele.add(item)
         elif isinstance(item, str):
             if last_ele is None:
                 ele.text = item
             else:
                 last_ele.tail = item
-        elif isinstance(item, list):
-            ele.extend(item)
+
     return ele
 
 
@@ -56,14 +87,14 @@ class DocX:
         self.header_rel_id = None
         self.footer_rel_id = None
 
-        self.doc_rels_elements = list()
+        self.doc_rels_elements = Composite()
 
-        self.cover_elements = list()
-        self.catalog_elements = list()
-        self.body_elements = list()
+        self.cover_elements = Composite()
+        self.catalog_elements = Composite()
+        self.body_elements = Composite()
 
-        self.footnotes_elements = list()
-        self.header_elements = list()
+        self.footnotes_elements = Composite()
+        self.header_elements = Composite()
 
     def set_cover(self, cover):
         builder = Cover.get_cover_builder(cover.type_)
@@ -208,19 +239,19 @@ class DocX:
         body = E('w:body')
 
         if len(self.cover_elements) > 0:
-            body.extend(self.cover_elements)
-            body.append(self._make_page_break())
+            body.add(self.cover_elements)
+            body.add(self._make_page_break())
 
         if len(self.catalog_elements) > 0:
             self._write_catalog_end()
-            body.extend(self.catalog_elements)
+            body.add(self.catalog_elements)
 
-        body.extend(self.body_elements)
-        body.append(self._make_w_sectPr(self.header_rel_id,
-                                        self.footer_rel_id,
-                                        page_start=1))
+        body.add(self.body_elements)
+        body.add(self._make_w_sectPr(self.header_rel_id,
+                                     self.footer_rel_id,
+                                     page_start=1))
 
-        doc.append(body)
+        doc.add(body)
 
         xml = tostring(doc, encoding='unicode')
         self._add_xml(path='word/document.xml', xml=xml)
@@ -249,12 +280,12 @@ class DocX:
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
         footnotes = E('w:footnotes', ns)
 
-        footnotes.append(E('w:footnote', {'w:type': 'separator', 'w:id': '0'},
-                           E('w:p', E('w:r', E('w:separator')))))
-        footnotes.append(E('w:footnote', {'w:type': 'continuationSeparator', 'w:id': '1'},
-                           E('w:p', E('w:r', E('w:continuationSeparator')))))
+        footnotes.add(E('w:footnote', {'w:type': 'separator', 'w:id': '0'},
+                        E('w:p', E('w:r', E('w:separator')))))
+        footnotes.add(E('w:footnote', {'w:type': 'continuationSeparator', 'w:id': '1'},
+                        E('w:p', E('w:r', E('w:continuationSeparator')))))
 
-        footnotes.extend(self.footnotes_elements)
+        footnotes.add(self.footnotes_elements)
 
         xml = tostring(footnotes, encoding='unicode')
         self._add_xml(path='word/footnotes.xml', xml=xml)
@@ -271,7 +302,7 @@ class DocX:
                   'xmlns:w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
                   'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
             hdr = E('w:hdr', ns)
-            hdr.extend(self.header_elements)
+            hdr.add(self.header_elements)
             xml = tostring(hdr, encoding='unicode')
             self._add_xml(path='word/header1.xml', xml=xml)
 
@@ -296,7 +327,7 @@ class DocX:
     # ---------------------------------------------------------------
 
     def _write_relationship(self, id_, type_, target):
-        self.doc_rels_elements.append(E('Relationship', {'Id': id_, 'Type': type_, 'Target': target}))
+        self.doc_rels_elements.add(E('Relationship', {'Id': id_, 'Type': type_, 'Target': target}))
 
     # ---------------------------------------------------------------
     # document.xml.rels END
@@ -308,12 +339,12 @@ class DocX:
 
     def visit_header(self, header):
         tree = self.header_elements
-        tree.append(E('w:p',
-                      E('w:pPr',
-                        E('w:pStyle', {'w:val': 'a4'})),
-                      E('w:r',
-                        E('w:rPr', E('w:rFonts', {'w:eastAsia': '楷体'})),
-                        E('w:t', header))))
+        tree.add(E('w:p',
+                   E('w:pPr',
+                     E('w:pStyle', {'w:val': 'a4'})),
+                   E('w:r',
+                     E('w:rPr', E('w:rFonts', {'w:eastAsia': '楷体'})),
+                     E('w:t', header))))
         self.header_rel_id = self._get_rel_id().text
 
     # ---------------------------------------------------------------
@@ -325,9 +356,9 @@ class DocX:
     # ---------------------------------------------------------------
 
     def visit_composite(self, list_):
-        ret = list()
+        ret = Composite()
         for ele in list_:
-            ret.extend(ele.visit(self))
+            ret.add(ele.visit(self))
         return ret
 
     def visit_text(self, text, font, size, italic, bold, underline):
@@ -335,25 +366,25 @@ class DocX:
 
         if font or size or italic or bold or underline:
             prop = E('w:rPr')
-            run.append(prop)
+            run.add(prop)
             if font is not None:
-                prop.append(E('w:rFonts', {'w:eastAsia': font}))
+                prop.add(E('w:rFonts', {'w:eastAsia': font}))
             if size is not None:
-                prop.append(E('w:sz', {'w:val': f'{TEXT_SIZE[size]}'}))
+                prop.add(E('w:sz', {'w:val': f'{TEXT_SIZE[size]}'}))
             if italic:
-                prop.append(E('w:i'))
+                prop.add(E('w:i'))
             if bold:
-                prop.append(E('w:b'))
+                prop.add(E('w:b'))
             if underline:
                 pass
 
-        run.append(E('w:t', text))
-        return [run]
+        run.add(E('w:t', text))
+        return run
 
     def visit_inline_math(self, content):
         m = E('m:oMath')
-        m.extend(content.visit(self))
-        return [m]
+        m.add(content.visit(self))
+        return m
 
     def visit_inline_figure(self, *, figure, format_, width, height):
         width = int(width * 914400)
@@ -370,65 +401,65 @@ class DocX:
         run = E('w:r')
 
         draw = E('w:drawing')
-        run.append(draw)
+        run.add(draw)
 
         inline = E('wp:inline')
-        draw.append(inline)
+        draw.add(inline)
 
-        inline.append(E('wp:extent', {'cx': f'{width}', 'cy': f'{height}'}))
-        inline.append(E('wp:effectExtent', {'l': '0', 't': '0', 'r': '0', 'b': '0'}))
-        inline.append(E('wp:docPr', {'id': f'{fig_id}', 'name': f'image{fig_id}'}))
+        inline.add(E('wp:extent', {'cx': f'{width}', 'cy': f'{height}'}))
+        inline.add(E('wp:effectExtent', {'l': '0', 't': '0', 'r': '0', 'b': '0'}))
+        inline.add(E('wp:docPr', {'id': f'{fig_id}', 'name': f'image{fig_id}'}))
 
-        inline.append(E('wp:cNvGraphicFramePr',
-                        E('a:graphicFrameLocks',
-                          {'xmlns:a': "http://schemas.openxmlformats.org/drawingml/2006/main", 'noChangeAspect': '1'})))
+        inline.add(E('wp:cNvGraphicFramePr',
+                     E('a:graphicFrameLocks',
+                       {'xmlns:a': "http://schemas.openxmlformats.org/drawingml/2006/main", 'noChangeAspect': '1'})))
 
-        inline.append(self._make_a_graphic(fig_id, rel_id, width, height))
+        inline.add(self._make_a_graphic(fig_id, rel_id, width, height))
 
-        return [run]
+        return run
 
     def visit_bookmark(self, *, type_, bookmark, left, right):
         number, text = self._retrieve_mark_id(bookmark)
 
-        ret = list()
+        ret = Composite()
 
         if left is not None:
-            ret.append(E('w:r', E('w:t', left)))
-        ret.append(E('w:bookmarkStart', {'w:id': number, 'w:name': text}))
-        ret.append(E('w:r', E('w:t', type_)))
-        ret.append(E('w:r', E('w:t', '', {'xml:space': 'preserve'})))
-        ret.append(E('w:fldSimple',
-                     E('w:r', E('w:t', '0')), {'w:instr': r' STYLEREF 1 \s'}))
-        ret.append(E('w:r', E('w:noBreakHyphen')))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
-        ret.append(E('w:r',
-                     E('w:instrText', ' ', {'xml:space': 'preserve'})))
-        ret.append(E('w:r',
-                     E('w:instrText', 'SEQ ', {'xml:space': 'preserve'})))
-        ret.append(E('w:r', E('w:instrText', type_)))
-        ret.append(E('w:r',
-                     E('w:instrText', r' \* ARABIC \s 1', {'xml:space': 'preserve'})))
-        ret.append(E('w:r', E('w:instrText', '', {'xml:space': 'preserve'})))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
-        ret.append(E('w:r', E('w:t', '1')))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
-        ret.append(E('w:bookmarkEnd', {'w:id': number}))
+            ret.add(E('w:r', E('w:t', left)))
+        ret.add(E('w:bookmarkStart', {'w:id': number, 'w:name': text}))
+        ret.add(E('w:r', E('w:t', type_)))
+        ret.add(E('w:r', E('w:t', '', {'xml:space': 'preserve'})))
+        ret.add(E('w:fldSimple',
+                  E('w:r', E('w:t', '0')), {'w:instr': r' STYLEREF 1 \s'}))
+        ret.add(E('w:r', E('w:noBreakHyphen')))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
+        ret.add(E('w:r',
+                  E('w:instrText', ' ', {'xml:space': 'preserve'})))
+        ret.add(E('w:r',
+                  E('w:instrText', 'SEQ ', {'xml:space': 'preserve'})))
+        ret.add(E('w:r', E('w:instrText', type_)))
+        ret.add(E('w:r',
+                  E('w:instrText', r' \* ARABIC \s 1', {'xml:space': 'preserve'})))
+        ret.add(E('w:r', E('w:instrText', '', {'xml:space': 'preserve'})))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
+        ret.add(E('w:r', E('w:t', '1')))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
+        ret.add(E('w:bookmarkEnd', {'w:id': number}))
         if right is not None:
-            ret.append(E('w:r', E('w:t', right)))
+            ret.add(E('w:r', E('w:t', right)))
 
         return ret
 
     def visit_reference(self, bookmark):
         mark_id = self._retrieve_mark_id(bookmark)
 
-        ret = list()
-        ret.append(E('w:r', E('w:t', '(')))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
-        ret.append(E('w:r', E('w:instrText', f'REF {mark_id.text} \\h')))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
-        ret.append(E('w:r', E('w:t', '0')))
-        ret.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
-        ret.append(E('w:r', E('w:t', ')')))
+        ret = Composite()
+        ret.add(E('w:r', E('w:t', '(')))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
+        ret.add(E('w:r', E('w:instrText', f'REF {mark_id.text} \\h')))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
+        ret.add(E('w:r', E('w:t', '0')))
+        ret.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
+        ret.add(E('w:r', E('w:t', ')')))
 
         return ret
 
@@ -440,35 +471,35 @@ class DocX:
                 E('w:footnoteReference', {'w:id': number}))
 
         foot = E('w:footnote', {'w:id': number})
-        self.footnotes_elements.append(foot)
+        self.footnotes_elements.add(foot)
 
         para = E('w:p')
-        foot.append(para)
+        foot.add(para)
 
-        para.append(E('w:pPr', E('w:pStyle', {'w:val': 'a9'})))
-        para.append(E('w:r',
-                      E('w:rPr', E('w:rStyle', {'w:val': 'aa'})),
-                      E('w:footnoteRef')))
-        para.append(E('w:r', {'xml:space': 'preserve'}, ' '))
+        para.add(E('w:pPr', E('w:pStyle', {'w:val': 'a9'})))
+        para.add(E('w:r',
+                   E('w:rPr', E('w:rStyle', {'w:val': 'aa'})),
+                   E('w:footnoteRef')))
+        para.add(E('w:r', {'xml:space': 'preserve'}, ' '))
 
         para.extend(content.visit(self))
 
-        return [run]
+        return run
 
     def visit_heading(self, *, content, level, heading):
         number, text = self._retrieve_mark_id(heading)
 
         body = self.body_elements
         if len(self.catalog_elements) > 0 and level == 1:
-            body.append(self._make_page_break())
+            body.add(self._make_page_break())
 
         para = E('w:p')
-        body.append(para)
+        body.add(para)
 
-        para.append(E('w:pPr', E('w:pStyle', {'w:val': f'{level}'})))
-        para.append(E('w:bookmarkStart', {'w:id': number, 'w:name': text}))
-        para.extend(content.visit(self))
-        para.append(E('w:bookmarkEnd', {'w:id': number}))
+        para.add(E('w:pPr', E('w:pStyle', {'w:val': f'{level}'})))
+        para.add(E('w:bookmarkStart', {'w:id': number, 'w:name': text}))
+        para.add(content.visit(self))
+        para.add(E('w:bookmarkEnd', {'w:id': number}))
 
         log = self.catalog_elements
 
@@ -482,24 +513,24 @@ class DocX:
                        E('w:tab', {'w:val': 'left', 'w:pos': f'{420+630*(level-1)}'}),
                        E('w:tab', {'w:val': 'right', 'w:leader': 'dot', 'w:pos': '8296'})),
                      E('w:rPr', E('w:noProof'), E('w:rStyle', {'w:val': 'a3'})))
-            para.append(prop)
+            para.add(prop)
 
             if len(log) == 0:
-                log.append(E('w:p',
-                             E('w:pPr', E('w:jc', {'w:val': 'center'})),
-                             E('w:r',
-                               E('w:rPr', E('w:b'), E('w:sz', {'w:val': '32'})),
-                               E('w:t', '目录'))))
-                log.append(para)
+                log.add(E('w:p',
+                          E('w:pPr', E('w:jc', {'w:val': 'center'})),
+                          E('w:r',
+                            E('w:rPr', E('w:b'), E('w:sz', {'w:val': '32'})),
+                            E('w:t', '目录'))))
+                log.add(para)
 
-                para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
-                para.append(E('w:r', E('w:instrText', {'xml:space': 'preserve'}, ' ')))
-                para.append(E('w:r', E('w:instrText', 'TOC \\o "1-3" \\h \\z \\u')))
-                para.append(E('w:r', E('w:instrText', ' ', {'xml:space': 'preserve'})))
-                para.append(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
+                para.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'begin'})))
+                para.add(E('w:r', E('w:instrText', {'xml:space': 'preserve'}, ' ')))
+                para.add(E('w:r', E('w:instrText', 'TOC \\o "1-3" \\h \\z \\u')))
+                para.add(E('w:r', E('w:instrText', ' ', {'xml:space': 'preserve'})))
+                para.add(E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})))
 
             else:
-                log.append(para)
+                log.add(para)
 
             link = E('w:hyperlink', {'w:anchor': text, 'w:history': '1'},
                      E('w:r', E('w:t', self._get_catalog_number(level))),
@@ -512,38 +543,38 @@ class DocX:
                      E('w:r', E('w:fldChar', {'w:fldCharType': 'separate'})),
                      E('w:r', E('w:t', '0')),
                      E('w:r', E('w:fldChar', {'w:fldCharType': 'end'})))
-            para.append(link)
+            para.add(link)
 
     def visit_paragraph(self, content):
         para = E('w:p')
-        self.body_elements.append(para)
+        self.body_elements.add(para)
 
-        para.append(E('w:pPr',
-                      E('w:spacing', {'w:before': '156', 'w:after': '156'}),
-                      E('w:ind', {'w:firstLine': '420'})))
+        para.add(E('w:pPr',
+                   E('w:spacing', {'w:before': '156', 'w:after': '156'}),
+                   E('w:ind', {'w:firstLine': '420'})))
 
-        para.extend(content.visit(self))
+        para.add(content.visit(self))
 
     def visit_standalone_math(self, content):
         para = E('w:p')
-        self.body_elements.append(para)
+        self.body_elements.add(para)
 
         m_p = E('m:oMathPara')
-        para.append(m_p)
+        para.add(m_p)
 
         for i in range(len(content)):
-            m = content[i].visit(self)[0]
-            m_p.append(m)
+            m = content[i].visit(self)
+            m_p.add(m)
             if i != len(content) - 1:
-                m_p.append(E('w:r', E('w:br')))
+                m_p.add(E('w:r', E('w:br')))
 
     def visit_math_definition(self, content, bookmark):
         m_p = E('m:oMathPara')
         for i in range(len(content)):
-            m = content[i].visit(self)[0]
-            m_p.append(m)
+            m = content[i].visit(self)
+            m_p.add(m)
             if i != len(content) - 1:
-                m_p.append(E('w:r', E('w:br')))
+                m_p.add(E('w:r', E('w:br')))
         tb = E('w:tbl',
                E('w:tblPr',
                  E('w:jc', {'w:val': 'center'}),
@@ -564,61 +595,61 @@ class DocX:
                      E('w:pPr', E('w:jc', {'w:val': 'center'})),
                      bookmark.visit(self)))
                  ))
-        self.body_elements.append(tb)
+        self.body_elements.add(tb)
 
     def visit_math_procedure(self, content):
         p = E('w:p')
         m_p = E('m:oMathPara')
-        p.append(m_p)
+        p.add(m_p)
         for i in range(len(content)):
-            m = content[i].visit(self)[0]
-            m_p.append(m)
+            m = content[i].visit(self)
+            m_p.add(m)
             if i != len(content) - 1:
-                m_p.append(E('w:r', E('w:br')))
-        self.body_elements.append(p)
+                m_p.add(E('w:r', E('w:br')))
+        self.body_elements.add(p)
 
     def visit_math_note(self, var_list):
         if len(var_list) > 0:
-            self.body_elements.append(E('w:p', E('w:r', E('w:t', '式中：'))))
+            self.body_elements.add(E('w:p', E('w:r', E('w:t', '式中：'))))
         for var in var_list:
             p = E('w:p')
-            self.body_elements.append(p)
+            self.body_elements.add(p)
 
-            p.append(E('w:pPr',
-                       E('w:tabs',
-                         E('w:tab', {'w:val': 'right', 'w:pos': '500'}),
-                         E('w:tab', {'w:val': 'center', 'w:pos': '600'}),
-                         E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
-            p.append(E('w:r', E('w:tab')))
-            p.append(E('m:oMath',
-                       var.visit(self)))
-            p.append(E('w:r', E('w:tab')))
-            p.append(E('w:r', E('w:t', '―')))
-            p.append(E('w:r', E('w:tab')))
-            p.append(E('w:r', E('w:t', var.inform)))
+            p.add(E('w:pPr',
+                    E('w:tabs',
+                      E('w:tab', {'w:val': 'right', 'w:pos': '500'}),
+                      E('w:tab', {'w:val': 'center', 'w:pos': '600'}),
+                      E('w:tab', {'w:val': 'left', 'w:pos': '700'}))))
+            p.add(E('w:r', E('w:tab')))
+            p.add(E('m:oMath',
+                    var.visit(self)))
+            p.add(E('w:r', E('w:tab')))
+            p.add(E('w:r', E('w:t', '―')))
+            p.add(E('w:r', E('w:tab')))
+            p.add(E('w:r', E('w:t', var.inform)))
             if var.unit is not None:
-                p.append(E('w:r', E('w:t', '，')))
-                p.append(E('m:oMath',
-                           var.unit.visit(self)))
+                p.add(E('w:r', E('w:t', '，')))
+                p.add(E('m:oMath',
+                        var.unit.visit(self)))
 
     def visit_figure(self, figure, format_, width, height, title):
         para = E('w:p')
-        self.body_elements.append(para)
+        self.body_elements.add(para)
 
         prop = E('w:pPr')
-        para.append(prop)
+        para.add(prop)
 
-        prop.append(E('w:jc', {'w:val': 'center'}))
+        prop.add(E('w:jc', {'w:val': 'center'}))
         if title is not None:
-            prop.append(E('w:keepNext'))
+            prop.add(E('w:keepNext'))
 
-        para.extend(self.visit_inline_figure(figure=figure, format_=format_, width=width, height=height))
+        para.add(self.visit_inline_figure(figure=figure, format_=format_, width=width, height=height))
 
         if title is not None:
             p = E('w:p')
-            self.body_elements.append(p)
-            p.append(E('w:pPr', E('w:pStyle', {'w:val': 'a9'})))
-            p.extend(title.visit(self))
+            self.body_elements.add(p)
+            p.add(E('w:pPr', E('w:pStyle', {'w:val': 'a9'})))
+            p.add(title.visit(self))
 
     def visit_table(self, content_by_rows, title):
         width = min(PAGE_WIDTH // len(content_by_rows[0]),
@@ -626,43 +657,43 @@ class DocX:
 
         if title is not None:
             p = E('w:p')
-            self.body_elements.append(p)
-            p.append(E('w:pPr',
-                       E('w:pStyle', {'w:val': 'a9'}),
-                       E('w:jc', {'w:val': 'center'}),
-                       E('w:keepNext')))
-            p.extend(title.visit(self))
+            self.body_elements.add(p)
+            p.add(E('w:pPr',
+                    E('w:pStyle', {'w:val': 'a9'}),
+                    E('w:jc', {'w:val': 'center'}),
+                    E('w:keepNext')))
+            p.add(title.visit(self))
 
         tb = E('w:tbl')
-        self.body_elements.append(tb)
+        self.body_elements.add(tb)
 
         tb_pr = E('w:tblPr')
-        tb.append(tb_pr)
-        tb_pr.append(E('w:tblStyle', {'w:val': 'ab'}))
-        tb_pr.append(E('w:jc', {'w:val': 'center'}))
-        tb_pr.append(E('w:tblLayout', {'w:type': 'fixed'}))
+        tb.add(tb_pr)
+        tb_pr.add(E('w:tblStyle', {'w:val': 'ab'}))
+        tb_pr.add(E('w:jc', {'w:val': 'center'}))
+        tb_pr.add(E('w:tblLayout', {'w:type': 'fixed'}))
 
         grid = E('w:tblGrid')
-        tb.append(grid)
+        tb.add(grid)
         for i in range(len(content_by_rows[0])):
-            grid.append(E('w:gridCol', {'w:w': f'{width}'}))
+            grid.add(E('w:gridCol', {'w:w': f'{width}'}))
 
         for row in content_by_rows:
             tr = E('w:tr')
-            tb.append(tr)
+            tb.add(tr)
 
             for cell in row:
                 tc = E('w:tc')
-                tr.append(tc)
-                tc.append(E('w:tcPr',
-                            E('w:vAlign', {'w:val': 'center'})))
+                tr.add(tc)
+                tc.add(E('w:tcPr',
+                         E('w:vAlign', {'w:val': 'center'})))
 
                 p = E('w:p')
-                tc.append(p)
-                p.append(E('w:pPr',
-                           E('w:jc', {'w:val': 'center'})))
+                tc.add(p)
+                p.add(E('w:pPr',
+                        E('w:jc', {'w:val': 'center'})))
 
-                p.extend(cell.visit(self))
+                p.add(cell.visit(self))
 
     def _retrieve_mark_id(self, obj):
         if id(obj) in self.mark_id_dict.keys():
@@ -674,8 +705,8 @@ class DocX:
 
     def _write_catalog_end(self):
         log = self.catalog_elements
-        log.append(E('w:p', E('w:r', E('w:fldChar', {'w:fldCharType': 'end'}))))
-        log.append(E('w:p', E('w:pPr', self._make_w_sectPr())))
+        log.add(E('w:p', E('w:r', E('w:fldChar', {'w:fldCharType': 'end'}))))
+        log.add(E('w:p', E('w:pPr', self._make_w_sectPr())))
 
     def _get_catalog_number(self, level):
         if level > len(self.catalog_list):
@@ -692,18 +723,18 @@ class DocX:
         sect_pr = E('w:sectPr')
 
         if header_rel_id is not None:
-            sect_pr.append(E('w:headerReference', {'w:type': 'default', 'r:id': header_rel_id}))
+            sect_pr.add(E('w:headerReference', {'w:type': 'default', 'r:id': header_rel_id}))
 
         if footer_rel_id is not None:
-            sect_pr.append(E('w:footerReference', {'w:type': 'default', 'r:id': footer_rel_id}))
-        sect_pr.append(E('w:pgSz', {'w:w': '11906', 'w:h': '16838'}))
-        sect_pr.append(E('w:pgMar', {'w:top': '1440', 'w:right': '1800',
-                                     'w:bottom': '1440', 'w:left': '1800',
-                                     'w:footer': '992', 'w:gutter': '0'}))
+            sect_pr.add(E('w:footerReference', {'w:type': 'default', 'r:id': footer_rel_id}))
+        sect_pr.add(E('w:pgSz', {'w:w': '11906', 'w:h': '16838'}))
+        sect_pr.add(E('w:pgMar', {'w:top': '1440', 'w:right': '1800',
+                                  'w:bottom': '1440', 'w:left': '1800',
+                                  'w:footer': '992', 'w:gutter': '0'}))
         if page_start is not None:
-            sect_pr.append(E('w:pgNumType', {'w:start': f'{page_start}'}))
-        sect_pr.append(E('w:cols', {'w:space': '425'}))
-        sect_pr.append(E('w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'}))
+            sect_pr.add(E('w:pgNumType', {'w:start': f'{page_start}'}))
+        sect_pr.add(E('w:cols', {'w:space': '425'}))
+        sect_pr.add(E('w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'}))
         return sect_pr
 
     def _make_a_graphic(self, fig_id, rel_id, cx, cy):
@@ -734,31 +765,24 @@ class DocX:
     # ---------------------------------------------------------------
 
     def visit_negative(self, exp):
-        return [self._make_m_r('-', sty='p'),
-                *exp.visit(self)]
+        return Composite(self._make_m_r('-', sty='p'), exp.visit(self))
 
     def visit_add(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('+', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('+', sty='p'), right.visit(self))
 
     def visit_sub(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('-', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('-', sty='p'), right.visit(self))
 
     def visit_mul(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('⋅', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('⋅', sty='p'), right.visit(self))
 
     def visit_div(self, left, right, type_='bar'):
         f = E('m:f')
-        f.append(E('m:fPr',
-                   E('m:type', {'m:val': type_})))
-        f.append(E('m:num', left.visit(self)))
-        f.append(E('m:den', right.visit(self)))
-        return [f]
+        f.add(E('m:fPr',
+                E('m:type', {'m:val': type_})))
+        f.add(E('m:num', left.visit(self)))
+        f.add(E('m:den', right.visit(self)))
+        return f
 
     def visit_flat_div(self, left, right):
         return self.visit_div(left, right, type_='lin')
@@ -767,102 +791,90 @@ class DocX:
         ret_exp = exp.visit(self)
         if ret_exp[0].tag == 'm:sSub':
             ret_exp[0].tag = 'm:sSubSup'
-            ret_exp[0].append(E('m:sup', index.visit(self)))
+            ret_exp[0].add(E('m:sup', index.visit(self)))
             return ret_exp
-        return [self._make_m_sSup(exp, index)]
+        return self._make_m_sSup(exp, index)
 
     def visit_radical(self, exp, index):
         rad = E('m:rad')
 
         pr = E('m:radPr')
-        rad.append(pr)
+        rad.add(pr)
         if index.value == 2:
-            pr.append(E('m:degHide', {'m:val': 'on'}))
+            pr.add(E('m:degHide', {'m:val': 'on'}))
 
         if index.value != 2:
-            rad.append(E('m:deg', index.visit(self)))
-        rad.append(E('m:e', exp.visit(self)))
+            rad.add(E('m:deg', index.visit(self)))
+        rad.add(E('m:e', exp.visit(self)))
 
-        return [rad]
+        return rad
 
     def visit_lesser_than(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('<', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('<', sty='p'), right.visit(self))
 
     def visit_lesser_or_equal(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('≤', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('≤', sty='p'), right.visit(self))
 
     def visit_equal(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('=', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('=', sty='p'), right.visit(self))
 
     def visit_not_equal(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('≠', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('≠', sty='p'), right.visit(self))
 
     def visit_greater_than(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('>', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('>', sty='p'), right.visit(self))
 
     def visit_greater_or_equal(self, left, right):
-        return [*left.visit(self),
-                self._make_m_r('≥', sty='p'),
-                *right.visit(self)]
+        return Composite(left.visit(self), self._make_m_r('≥', sty='p'), right.visit(self))
 
     def visit_sin(self, exp):
-        return [self._make_m_func('sin', exp)]
+        return self._make_m_func('sin', exp)
 
     def visit_cos(self, exp):
-        return [self._make_m_func('cos', exp)]
+        return self._make_m_func('cos', exp)
 
     def visit_tan(self, exp):
-        return [self._make_m_func('tan', exp)]
+        return self._make_m_func('tan', exp)
 
     def visit_cot(self, exp):
-        return [self._make_m_func('cot', exp)]
+        return self._make_m_func('cot', exp)
 
     def visit_arcsin(self, exp):
-        return [self._make_m_func('arcsin', exp)]
+        return self._make_m_func('arcsin', exp)
 
     def visit_arccos(self, exp):
-        return [self._make_m_func('arccos', exp)]
+        return self._make_m_func('arccos', exp)
 
     def visit_arctan(self, exp):
-        return [self._make_m_func('arctan', exp)]
+        return self._make_m_func('arctan', exp)
 
     def visit_arccot(self, exp):
-        return [self._make_m_func('arccot', exp)]
+        return self._make_m_func('arccot', exp)
 
     def visit_parenthesis(self, exp):
-        return [self._make_m_d(exp, left='(', right=')')]
+        return self._make_m_d(exp, left='(', right=')')
 
     def visit_square_bracket(self, exp):
-        return [self._make_m_d(exp, left='[', right=']')]
+        return self._make_m_d(exp, left='[', right=']')
 
     def visit_brace(self, exp):
-        return [self._make_m_d(exp, left='{', right='}')]
+        return self._make_m_d(exp, left='{', right='}')
 
     def visit_variable(self, var, sub):
         if sub is None:
-            return [self._make_m_r(var)]
+            return self._make_m_r(var)
         else:
-            return [self._make_m_sSub(var, sub)]
+            return self._make_m_sSub(var, sub)
 
     def visit_number(self, value, precision):
         if abs(value) < 1e-10:
-            ret = [self._make_m_r('0')]
+            ret = self._make_m_r('0')
         elif abs(value) > 10000 or abs(value) < 0.001 and value != 0:
             sup = math.floor(math.log10(abs(value)))
             base = value / math.pow(10, sup)
-            ret = [self._make_m_r(f'{base:.2f}'),
-                   self._make_m_r('⋅', sty='p'),
-                   self._make_m_sSup('10', f'{sup}')]
+            ret = Composite(self._make_m_r(f'{base:.2f}'),
+                            self._make_m_r('⋅', sty='p'),
+                            self._make_m_sSup('10', f'{sup}'))
         else:
             if precision is None:
                 value = f'{value}'
@@ -876,49 +888,49 @@ class DocX:
                     value = f'{value:.{precision}f}'
             else:
                 value = f'{value:.{precision}f}'
-            ret = [self._make_m_r(value)]
+            ret = self._make_m_r(value)
 
         return ret
 
     def visit_unit(self, symbol):
-        return [self._make_m_r(symbol, sty='p')]
+        return self._make_m_r(symbol, sty='p')
 
     def visit_sum(self, exp):
-        return [self._make_m_nary(exp, name='∑')]
+        return self._make_m_nary(exp, name='∑')
 
     def visit_serial_variable(self, var, sub, index):
         if sub is None:
-            return [self._make_m_sSub(var, f'{index}')]
+            return self._make_m_sSub(var, f'{index}')
         elif isinstance(sub, str):
-            return [self._make_m_sSub(var, sub + f'-{index}')]
+            return self._make_m_sSub(var, sub + f'-{index}')
         else:
-            E('m:sSub',
-              E('m:e', self._make_m_r(var)),
-              E('m:sub', sub.visit(self), self._make_m_r(f'-{index}')))
+            return E('m:sSub',
+                     E('m:e', self._make_m_r(var)),
+                     E('m:sub', sub.visit(self), self._make_m_r(f'-{index}')))
 
     def visit_math_text(self, text, align, sty, color):
-        return [self._make_m_r(text, align=align, sty=sty, color=color)]
+        return self._make_m_r(text, align=align, sty=sty, color=color)
 
     def visit_multi_line(self, list_, included):
         arr = E('m:eqArr')
         for item in list_:
-            arr.append(E('m:e', item.visit(self)))
+            arr.add(E('m:e', item.visit(self)))
         if included is None:
-            return [arr]
+            return arr
         elif included == 'left':
-            return [E('m:d',
-                      E('m:dPr',
-                        E('m:begChr', {'m:val': '{'}),
-                        E('m:endChr', {'m:val': ''})),
-                      E('m:e',
-                        arr))]
+            return E('m:d',
+                     E('m:dPr',
+                       E('m:begChr', {'m:val': '{'}),
+                       E('m:endChr', {'m:val': ''})),
+                     E('m:e',
+                       arr))
         elif included == 'right':
-            return [E('m:d',
-                      E('m:dPr',
-                        E('m:begChr', {'m:val': ''}),
-                        E('m:endChr', {'m:val': '}'})),
-                      E('m:e',
-                        arr))]
+            return E('m:d',
+                     E('m:dPr',
+                       E('m:begChr', {'m:val': ''}),
+                       E('m:endChr', {'m:val': '}'})),
+                     E('m:e',
+                       arr))
         else:
             raise TypeError('Unknown included type: %s in math multi line' % included)
 
@@ -926,20 +938,20 @@ class DocX:
         run = E('m:r')
         if sty or align:
             pr = E('m:rPr')
-            run.append(pr)
+            run.add(pr)
             if sty:
-                pr.append(E('m:sty', {'m:val': sty}))
+                pr.add(E('m:sty', {'m:val': sty}))
             if align:
-                pr.append(E('m:aln'))
+                pr.add(E('m:aln'))
         wpr = E('w:rPr')
-        run.append(wpr)
+        run.add(wpr)
 
-        wpr.append(E('w:rFonts', {'w:ascii': 'Cambria Math',
-                                  'w:hAnsi': 'Cambria Math'}))
+        wpr.add(E('w:rFonts', {'w:ascii': 'Cambria Math',
+                               'w:hAnsi': 'Cambria Math'}))
         if color is not None:
-            wpr.append(E('w:color', {'w:val': color}))
+            wpr.add(E('w:color', {'w:val': color}))
 
-        run.append(E('m:t', text))
+        run.add(E('m:t', text))
         return run
 
     def _make_m_sSub(self, base, sub):
@@ -975,15 +987,15 @@ class DocX:
         d = E('m:d')
 
         pr = E('m:dPr')
-        d.append(pr)
+        d.add(pr)
 
         if left is not None:
-            pr.append(E('m:begChr', {'m:val': left}))
+            pr.add(E('m:begChr', {'m:val': left}))
         if right is not None:
-            pr.append(E('m:endChr', {'m:val': right}))
+            pr.add(E('m:endChr', {'m:val': right}))
 
         for exp in exps:
-            d.append(E('m:e', exp.visit(self)))
+            d.add(E('m:e', exp.visit(self)))
 
         return d
 
@@ -991,21 +1003,21 @@ class DocX:
         n = E('m:nary')
 
         pr = E('m:naryPr')
-        n.append(pr)
+        n.add(pr)
 
         if name:
-            pr.append(E('m:chr', {'m:val': name}))
+            pr.add(E('m:chr', {'m:val': name}))
         if sub is None:
-            pr.append(E('m:subHide', {'m:val': 'on'}))
+            pr.add(E('m:subHide', {'m:val': 'on'}))
         if sup is None:
-            pr.append(E('m:supHide', {'m:val': 'on'}))
-        pr.append(E('m:ctrlPr', E('w:rPr', E('w:i'))))
+            pr.add(E('m:supHide', {'m:val': 'on'}))
+        pr.add(E('m:ctrlPr', E('w:rPr', E('w:i'))))
 
         if sub is not None:
-            n.append(E('m:sub', sub.visit(self)))
+            n.add(E('m:sub', sub.visit(self)))
         if sup is not None:
-            n.append(E('m:sup', sup.visit(self)))
-        n.append(E('m:e', exp.visit(self)))
+            n.add(E('m:sup', sup.visit(self)))
+        n.add(E('m:e', exp.visit(self)))
 
         return n
 
@@ -1023,31 +1035,31 @@ class Cover:
 
 class DefaultCover(Cover):
     def __init__(self):
-        self.elements = list()
+        self.elements = Composite()
 
     def visit_cover(self, *, project, name, part, phase, number, secret, footer_str):
         tree = self.elements
 
         c1 = self._make_enclosed_cell('秘密')
         c2 = self._make_enclosed_cell(secret)
-        tree.append(self._make_table([[c1, c2]],
-                                     grid_col=[600, 2000],
-                                     x_spec='left', y_spec='top',
-                                     top_margin=0, bottom_margin=0,
-                                     left_margin=0, right_margin=0))
+        tree.add(self._make_table([[c1, c2]],
+                                  grid_col=[600, 2000],
+                                  x_spec='left', y_spec='top',
+                                  top_margin=0, bottom_margin=0,
+                                  left_margin=0, right_margin=0))
 
         c1 = self._make_enclosed_cell('编号')
         c2 = self._make_enclosed_cell(number)
-        tree.append(self._make_table([[c1, c2]],
-                                     grid_col=[600, 2000],
-                                     x_spec='right', y_spec='top',
-                                     top_margin=0, bottom_margin=0,
-                                     left_margin=0, right_margin=0))
+        tree.add(self._make_table([[c1, c2]],
+                                  grid_col=[600, 2000],
+                                  x_spec='right', y_spec='top',
+                                  top_margin=0, bottom_margin=0,
+                                  left_margin=0, right_margin=0))
 
         c1 = self._make_cell(text='计 算 书', size=72)
-        tree.append(self._make_table([[c1]],
-                                     grid_col=[5000],
-                                     x_spec='center', y=3000))
+        tree.add(self._make_table([[c1]],
+                                  grid_col=[5000],
+                                  x_spec='center', y=3000))
 
         rows = list()
         for left, right in zip(['工程名称', '专业名称', '设计阶段', '计算书名称'],
@@ -1061,9 +1073,9 @@ class DefaultCover(Cover):
                                  b_size=6,
                                  space=(200, 0))
             rows.append([c1, c2])
-        tree.append(self._make_table(rows, grid_col=[1600, 5000],
-                                     x_spec='center', y=6000,
-                                     left_margin=0, right_margin=10))
+        tree.add(self._make_table(rows, grid_col=[1600, 5000],
+                                  x_spec='center', y=6000,
+                                  left_margin=0, right_margin=10))
 
         rows = list()
         year = self._make_cell('年', size=24, v_align='bottom', space=(120, 0))
@@ -1076,15 +1088,15 @@ class DefaultCover(Cover):
         for txt in ['审查', '校核', '计算']:
             c1 = self._make_cell(txt, size=24, v_align='bottom', space=(120, 0))
             rows.append([c1, line, blk, line, year, line, month, line, day])
-        tree.append(self._make_table(rows,
-                                     grid_col=[700, 1500, 300, 900, 300, 600, 300, 600, 300],
-                                     x_spec='center', y=10500,
-                                     left_margin=0, right_margin=0))
+        tree.add(self._make_table(rows,
+                                  grid_col=[700, 1500, 300, 900, 300, 600, 300, 600, 300],
+                                  x_spec='center', y=10500,
+                                  left_margin=0, right_margin=0))
 
         footer = self._make_cell(footer_str, size=24)
-        tree.append(self._make_table([[footer]],
-                                     grid_col=[5000],
-                                     x_spec='center', y=13500))
+        tree.add(self._make_table([[footer]],
+                                  grid_col=[5000],
+                                  x_spec='center', y=13500))
 
     def _make_table(self, rows, grid_col=None, x=None, y=None,
                     x_spec=None, y_spec=None,
@@ -1093,9 +1105,9 @@ class DefaultCover(Cover):
         tb = E('w:tbl')
 
         pr = E('w:tblPr')
-        tb.append(pr)
+        tb.add(pr)
 
-        pr.append(E('w:tblLayout', {'w:type': 'fixed'}))
+        pr.add(E('w:tblLayout', {'w:type': 'fixed'}))
 
         if x or y or x_spec or y_spec:
             attr = dict()
@@ -1109,34 +1121,34 @@ class DefaultCover(Cover):
                 attr['w:tblpY'] = f'{y}'
             if y_spec:
                 attr['w:tblpYSpec'] = f'{y_spec}'
-            pr.append(E('w:tblpPr', attr))
+            pr.add(E('w:tblpPr', attr))
 
         if (top_margin is not None
                 or bottom_margin is not None
                 or left_margin is not None
                 or right_margin is not None):
             mar = E('w:tblCellMar')
-            pr.append(mar)
+            pr.add(mar)
             if top_margin is not None:
-                mar.append(E('w:top', {'w:w': f'{top_margin}', 'w:type': 'dxa'}))
+                mar.add(E('w:top', {'w:w': f'{top_margin}', 'w:type': 'dxa'}))
             if bottom_margin is not None:
-                mar.append(E('w:bottom', {'w:w': f'{bottom_margin}', 'w:type': 'dxa'}))
+                mar.add(E('w:bottom', {'w:w': f'{bottom_margin}', 'w:type': 'dxa'}))
             if left_margin is not None:
-                mar.append(E('w:left', {'w:w': f'{left_margin}', 'w:type': 'dxa'}))
+                mar.add(E('w:left', {'w:w': f'{left_margin}', 'w:type': 'dxa'}))
             if right_margin is not None:
-                mar.append(E('w:right', {'w:w': f'{right_margin}', 'w:type': 'dxa'}))
+                mar.add(E('w:right', {'w:w': f'{right_margin}', 'w:type': 'dxa'}))
 
         if grid_col is not None:
             grid = E('w:tblGrid')
-            tb.append(grid)
+            tb.add(grid)
             for w in grid_col:
-                grid.append(E('w:gridCol', {'w:w': f'{w}'}))
+                grid.add(E('w:gridCol', {'w:w': f'{w}'}))
 
         for r in rows:
             row = E('w:tr')
-            tb.append(row)
+            tb.add(row)
             for c in r:
-                row.append(c)
+                row.add(c)
 
         return tb
 
@@ -1150,49 +1162,49 @@ class DefaultCover(Cover):
         tc = E('w:tc')
 
         prop = E('w:tcPr')
-        tc.append(prop)
+        tc.add(prop)
 
-        prop.append(E('w:vAlign', {'w:val': v_align}))
+        prop.add(E('w:vAlign', {'w:val': v_align}))
 
         if borders is not None:
             border = E('w:tcBorders')
             for side in borders:
-                border.append(E(f'w:{side}',
+                border.add(E(f'w:{side}',
                                 {'w:val': 'single',
                                  'w:sz': f'{b_size}',
                                  'w:space': '0',
                                  'w:color': 'auto'}))
-            prop.append(border)
+            prop.add(border)
 
         para = E('w:p')
-        tc.append(para)
+        tc.add(para)
 
         p_pr = E('w:pPr')
-        para.append(p_pr)
+        para.add(p_pr)
 
-        p_pr.append(E('w:jc', {'w:val': h_align}))
+        p_pr.add(E('w:jc', {'w:val': h_align}))
         if v_align != 'center':
-            p_pr.append(E('w:snapToGrid', {'w:val': 'false'}))
-            p_pr.append(E('w:spacing',
+            p_pr.add(E('w:snapToGrid', {'w:val': 'false'}))
+            p_pr.add(E('w:spacing',
                           {'w:before': f'{space[0]}', 'w:after': f'{space[1]}'}))
 
         r = E('w:r')
-        para.append(r)
+        para.add(r)
 
         if size or font:
             r_pr_in_p = E('w:rPr')
             r_pr_in_r = E('w:rPr')
-            p_pr.append(r_pr_in_p)
-            r.append(r_pr_in_r)
+            p_pr.add(r_pr_in_p)
+            r.add(r_pr_in_r)
 
             if size:
-                r_pr_in_p.append(E('w:sz', {'w:val': f'{size}'}))
-                r_pr_in_r.append(E('w:sz', {'w:val': f'{size}'}))
+                r_pr_in_p.add(E('w:sz', {'w:val': f'{size}'}))
+                r_pr_in_r.add(E('w:sz', {'w:val': f'{size}'}))
             if font:
-                r_pr_in_p.append(E('w:rFonts', {'w:eastAsia': font}))
-                r_pr_in_r.append(E('w:rFonts', {'w:eastAsia': font}))
+                r_pr_in_p.add(E('w:rFonts', {'w:eastAsia': font}))
+                r_pr_in_r.add(E('w:rFonts', {'w:eastAsia': font}))
 
         if text:
-            r.append(E('w:t', text))
+            r.add(E('w:t', text))
 
         return tc

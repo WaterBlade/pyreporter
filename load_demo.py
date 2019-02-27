@@ -44,10 +44,35 @@ A1_calc.add(Formula(θe, ATan((ζ*ah)/(g-ζ*av))))
 A2_calc = Calculator()
 A2_calc.add(Formula(θe, ATan((ζ*ah)/(g+ζ*av))))
 
+A = V('A', inform='挡土墙截面积', unit=U('m')**2)
+L = V('L', inform='挡土墙段长度', unit=U('m'))
+Ei = V('E', 'i', inform='作用在质点i的水平向地震惯性力代表值', unit=U('kN'))
+ξ = V('ξ', inform='地震作用的效应折减数值', value=0.25)
+GEi = V('G', 'Ei', inform='集中在质点i的重力作用标准值', unit=U('kN'))
+γc = V('γ', 'c', inform='混凝土的重度标准值', unit=U('kN')/U('m')**3)
+αi = V('α', 'i', inform='质点i的地震惯性力的动态分布系数')
+
+Ei_calc = Calculator()
+Ei_calc.add(Formula(Ei, ah * ξ * GEi * αi / g))
+
+GEi_calc = Calculator()
+GEi_calc.add(Formula(GEi, γc * A * L))
+
+n = V('n', inform='挡土墙建基面内桩的数量', precision=0)
+b = V('b', inform='挡土墙宽度', unit=U('m'))
+Ni = V('N', inform='计算截面处竖向荷载', unit=U('kN'))
+Mi = V('M', inform='计算截面处的弯矩', unit=U('kN')*U('m'))
+Hi = V('H', inform='计算截面处水平荷载', unit=U('kN'))
+
+Fn_calc = Calculator(sequence=False)
+Fn_calc.add(Formula(Ni, GEi/n))
+Fn_calc.add(Formula(Hi, (Ei+Fe*b)/n))
+Fn_calc.add(Formula(Mi, (Ei*H+Fe*b*(H/3))/n))
+
 
 if __name__ == '__main__':
     rep = Report()
-    rep.set_cover(DefaultCover('康苏水库工程', '溢洪洞出口桩基荷载计算', '水  工', '技  施'))
+    rep.set_cover(DefaultCover('康苏水库工程', '溢洪洞出口桩基水平荷载计算', '水  工', '技  施'))
     q0.set(0)
     ψ1.set(0)
     ψ2.set(0)
@@ -58,6 +83,12 @@ if __name__ == '__main__':
     ζ.set(0.35)
     ah.set(0.4*g)
     av.set(2/3*ah)
+    A.set(47.03)
+    L.set(5.2)
+    γc.set(25)
+    αi.set(2.0)
+    n.set(9)
+    b.set(8.26)
 
     F_list = list()
 
@@ -84,16 +115,33 @@ if __name__ == '__main__':
 
     Fe.set(max(F_list))
 
+    GEi_calc.calc()
+    Ei_calc.calc()
+
+    Fn_calc.calc()
+
     rep.add_heading('计算基本参数及结果', 1)
     rep.add_heading('基本参数', 2)
     rep.add_paragraph('土体高度：', Value(H))
     rep.add_paragraph('土体重度：', Value(γ))
     rep.add_paragraph('土的内摩擦角：', Value(φ))
     rep.add_paragraph('水平向设计地震加速度代表值', Math(ah==0.4*g))
-    rep.add_heading('计算结果', 2)
-    rep.add_paragraph('作用在桩身的动土压力为：', Value(Fe))
+    rep.add_paragraph('挡土墙截面面积', Value(A))
+    rep.add_paragraph('挡土墙长度', Value(L))
+    rep.add_paragraph('挡土墙宽度', Value(b))
+    rep.add_paragraph('挡土墙内桩基数量', Value(n))
+    rep.add_paragraph('混凝土重度', Value(γc))
+    rep.add_paragraph('挡土墙地震的惯性力分布系数', Value(αi))
 
-    rep.add_heading('计算过程', 1)
+    rep.add_heading('计算结果', 2)
+    rep.add_paragraph('每延米的动土压力为：', Value(Fe))
+    rep.add_paragraph('挡土墙地震惯性力为：', Value(Ei))
+    rep.add_paragraph('挡土墙重力标准值为：', Value(GEi))
+    rep.add_paragraph('计算截面处竖向荷载：', Value(Ni))
+    rep.add_paragraph('计算截面处水平荷载：', Value(Hi))
+    rep.add_paragraph('计算截面处弯矩：', Value(Mi))
+
+    rep.add_heading('地震动土压力计算', 1)
     rep.add_heading('计算公式', 2)
 
     rep.add_paragraph('根据规范《水工建筑物抗震设计规范 NB 35047-2015》5.9.1条，动土压力按以下两式分别计算，取大值：')
@@ -142,4 +190,28 @@ if __name__ == '__main__':
                   title='动土压力计算成果')
     rep.add_paragraph('最终的动土压力取值为：', Value(Fe))
 
-    rep.save('load_demo.docx')
+    rep.add_heading('挡土墙地震惯性力计算', 1)
+    rep.add_heading('计算公式', 2)
+    rep.add_paragraph('根据规范《水工建筑物抗震设计规范 NB 35047-2015》5.5.9条，建筑物地震惯性力代表值为：')
+    rep.add(Definition(Ei_calc))
+    rep.add(Note(Ei_calc))
+    rep.add_paragraph('挡土墙重力作用标准值按下式计算:')
+    rep.add(Definition(GEi_calc))
+    rep.add(Note(GEi_calc))
+
+    rep.add_heading('计算过程', 2)
+    rep.add_paragraph('挡土墙重力标准值：')
+    rep.add(Procedure(GEi_calc))
+    rep.add_paragraph('根据规范《水工建筑物抗震设计规范 NB 35047-2015》9.1.3条，考虑取上下端平均值，挡土墙地震惯性力的动态分布系数为：',
+                      Value(αi))
+    rep.add_paragraph('挡土墙地震惯性力代表值：')
+    rep.add(Procedure(Ei_calc))
+
+    rep.add_heading('单个桩基荷载计算', 1)
+    rep.add_heading('计算公式', 2)
+    rep.add(Definition(Fn_calc))
+    rep.add(Note(Fn_calc))
+    rep.add_heading('计算过程', 2)
+    rep.add(Procedure(Fn_calc))
+
+    rep.save('康苏溢洪洞出口消能桩基荷载计算.docx')

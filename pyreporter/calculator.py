@@ -467,12 +467,14 @@ class Sum(Expression):
         for serial in serial_variable_list[1:]:
             assert len(serial) == len(serial_variable_list[0])
         self.serial_variable_list = serial_variable_list
-        self.serial_length = len(serial_variable_list[0])
         self.expanded = None
+
+    def _get_serial_length(self):
+        return len(self.serial_variable_list[0])
 
     def calc(self):
         ret = 0
-        for i in range(self.serial_length):
+        for i in range(self._get_serial_length()):
             for var in self.serial_variable_list:
                 var.set_current(i)
             ret += self.left.calc()
@@ -480,14 +482,18 @@ class Sum(Expression):
 
     def expression_in_number(self):
         ret = None
-        for i in range(self.serial_length):
+        for i in range(self._get_serial_length()):
             for var in self.serial_variable_list:
                 var.set_current(i)
             if ret is None:
                 ret = self.left.expression_in_number()
             else:
                 ret += self.left.expression_in_number()
-        return ret
+
+        if ret is None:
+            return Number(0)
+        else:
+            return ret
 
     def visit(self, visitor):
         return visitor.visit_sum(self.left)
