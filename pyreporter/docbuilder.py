@@ -1,15 +1,24 @@
 from xml.etree.ElementTree import ElementTree as ET
 from xml.etree.ElementTree import Element as E
 from xml.etree.ElementTree import SubElement as SE
+from zipfile import ZipFile, ZIP_DEFLATED
 
 
 class ReportBuilder:
     def __init__(self):
         self.mark_list = list()
         self.order_list = list()
+        self.footnote_id_list = list()
+        self.image_id_list = list()
 
+        self.relationship_list = list()
+        self.footnote_list = list()
+        self.cover_list = list()
         self.heading_list = list()
         self.content_list = list()
+
+        self.header = None
+        self.file_list = list()
 
     def set_cover(self):
         pass
@@ -50,11 +59,39 @@ class ReportBuilder:
     def canvas(self):
         pass
 
-    def build(self):
-        pass
+    def _build_file(self):
+        footer_rel_id = RelIndex()
+        header_rel_id = RelIndex()
 
-    def save(self):
-        pass
+        lst = self.file_list
+        lst.append(ContentTypeFile())
+        lst.append(RelsFile())
+        lst.append(Item1XMLRelsFile())
+        lst.append(Item1File())
+        lst.append(ItemProps1File())
+        lst.append(AppFile())
+        lst.append(CoreFile())
+        lst.append(DocumentXMLRelsFile(self.relationship_list, footer_rel_id, header_rel_id))
+        lst.append(Theme1File())
+        lst.append(DocumentFile(self.cover_list, self.heading_list, self.content_list, footer_rel_id, header_rel_id))
+        lst.append(EndnotesFile())
+        lst.append(FontTableFile())
+        lst.append(FooterFile())
+
+        footnotes = FootnotesFile(self.footnote_list)
+
+        lst.append(footnotes)
+        lst.append(HeaderFile(self.header))
+        lst.append(NumberingFile())
+        lst.append(SettingsFile())
+        lst.append(StylesFile())
+        lst.append(WebSettingsFile())
+
+    def save(self, path):
+        self._build_file()
+        with ZipFile(path, 'w', ZIP_DEFLATED) as zip:
+            for file in self.file_list:
+                file.write(zip)
 
 
 class Builder:
@@ -163,13 +200,15 @@ class Composite(Component):
             item.build(base)
 
 
-class Mark:
+class IndexRef:
     def __init__(self):
         self.index = None
 
     def set_index(self, index: int):
         self.index = index
 
+
+class Mark(IndexRef):
     def get_id(self):
         assert self.index is not None
         return f'{self.index}'
@@ -179,16 +218,21 @@ class Mark:
         return f'_Mark{self.index}'
 
 
-class FootnoteRel:
-    def __init__(self):
-        self.index = None
-
-    def set_index(self, index: int):
-        self.index = index
-
+class FootnoteIndex(IndexRef):
     def get_id(self):
         assert self.index is not None
         return f'{self.index}'
+
+
+class RelIndex(IndexRef):
+    def get_id(self):
+        assert self.index is not None
+        return f'rId{self.index}'
+
+
+class ImageIndex(IndexRef):
+    def get_name(self):
+        return f'image{self.index}'
 
 
 class CatalogOrder:
@@ -241,7 +285,7 @@ class Text(Component):
 
 class Bookmark(Component):
     def __init__(self, type_: str, mark: Mark,
-                 left: str=None, right: str=None):
+                 left: str = None, right: str = None):
         self.type_ = type_
         self.mark = mark
         self.left = left
@@ -284,7 +328,7 @@ class Reference(Component):
 
 
 class FootnoteInDocument(Component):
-    def __init__(self, footnote_rel: FootnoteRel):
+    def __init__(self, footnote_rel: FootnoteIndex):
         self.footnote_rel = footnote_rel
 
     def build(self, base):
@@ -294,7 +338,7 @@ class FootnoteInDocument(Component):
 
 
 class FootnoteInFootnotes(Composite):
-    def __init__(self, footnote_rel: FootnoteRel):
+    def __init__(self, footnote_rel: FootnoteIndex):
         super().__init__()
         self.footnote_rel = footnote_rel
 
@@ -354,6 +398,11 @@ class HeadingInCatalog(Composite):
             SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
 
 
+class CatalogEnd(Component):
+    def build(self, base):
+        SE(SE(SE(base, 'w:p'), 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
+
+
 class HeadingInBody(Composite):
     def __init__(self, mark: Mark, order: CatalogOrder, level: int):
         super().__init__()
@@ -380,6 +429,67 @@ class Paragraph(Composite):
         super().build(para)
 
 
+class SectionProp(Component):
+    def __init__(self, header_rel_id, footer_rel_id, page_start=None):
+        self.header_rel_id = header_rel_id
+        self.footer_rel_id = footer_rel_id
+        self.page_start = page_start
+
+    def build(self, base):
+        sect_pr = SE(base, 'w:sectPr')
+
+        if self.header_rel_id is not None:
+            SE(sect_pr,
+               'w:headerReference',
+               {'w:type': 'default',
+                'r:id': self.header_rel_id.get_id()})
+        if self.footer_rel_id is not None:
+            SE(sect_pr,
+               'w:footerReference',
+               {'w:type': 'default',
+                'r:id': self.footer_rel_id.get_id()})
+
+        SE(sect_pr, 'w:pgSz', {'w:w': '11906', 'w:h': '16838'})
+        SE(sect_pr, 'w:pgMar', {'w:top': '1440', 'w:right': '1800',
+                                'w:bottom': '1440', 'w:left': '1800',
+                                'w:footer': '992', 'w:gutter': '0'})
+
+        if self.page_start is not None:
+            SE(sect_pr, 'w:pgNumType', {'w:start': f'{self.page_start}'})
+        SE(sect_pr, 'w:cols', {'w:space': '425'})
+        SE(sect_pr, 'w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'})
+
+
+class SectionPropInParagraph(SectionProp):
+    def build(self, base):
+        prop = SE(SE(base, 'w:p'), 'w:pPr')
+        super().build(prop)
+
+
+class Relationship(Component):
+    def __init__(self, type_, target):
+        self.rel_id = RelIndex()
+        self.type_ = type_
+        self.target = target
+
+    def build(self, base):
+        SE(base, 'Relationship', {'Id': self.rel_id.get_id(), 'Type': self.type_, 'Target': self.target})
+
+
+class ImageRelationship(Component):
+    def __init__(self, index: ImageIndex, format_: str):
+        self.rel_id = RelIndex()
+        self.index = index
+        self.format_ = format_
+
+    def build(self, base):
+        SE(base,
+           'Relationship',
+           {'Id': self.rel_id.get_id(),
+            'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+            'Target': f'media/{self.index.get_name()}.{self.format_}'})
+
+
 class FilledPlainFile:
     def __init__(self, path: str, data: str):
         self.path = path
@@ -403,8 +513,12 @@ class EmptyXMLFile:
     def get_root(self):
         return self.root
 
+    def build(self):
+        pass
+
     def write(self, zipfile):
-        with zipfile.open(self.path) as file:
+        self.build()
+        with zipfile.open(self.path, 'w') as file:
             et = ET(self.root)
             et.write(file, encoding='utf-8', xml_declaration=True)
 
@@ -421,7 +535,7 @@ class RelsFile(FilledXMLFile):
         super().__init__('_rels/.rels', data)
 
 
-class CustomFile(FilledXMLFile):
+class Item1XMLRelsFile(FilledXMLFile):
     def __init__(self):
         data = """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps" Target="itemProps1.xml"/></Relationships>"""
         super().__init__('customXml/_rels/item1.xml.rels', data)
@@ -433,7 +547,7 @@ class Item1File(FilledPlainFile):
         super().__init__('customXml/item1.xml', data)
 
 
-class Props1File(FilledXMLFile):
+class ItemProps1File(FilledXMLFile):
     def __init__(self):
         data = """<ds:datastoreItem xmlns:ds="http://schemas.openxmlformats.org/officeDocument/2006/customXml" ds:itemID="{16CE1163-3A16-4C5A-834F-C1E16F9680D6}"><ds:schemaRefs><ds:schemaRef ds:uri="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"/></ds:schemaRefs></ds:datastoreItem>"""
         super().__init__('customXml/itemProps1.xml', data)
@@ -452,10 +566,48 @@ class CoreFile(FilledXMLFile):
 
 
 class DocumentXMLRelsFile(EmptyXMLFile):
-    def __init__(self):
+    def __init__(self, relationship_list, footer_rel_id, header_rel_id):
         ns = {'xmlns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
         rels = E('Relationships', ns)
         super().__init__('word/_rels/document.xml.rels', rels)
+        self.relationship_list = list()
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+                  "theme/theme1.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+                  "webSettings.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+                  "fontTable.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+                  "settings.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+                  "styles.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+                  "endnotes.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+                  "footnotes.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
+                  "../customXml/item1.xml")
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+                  "numbering.xml")
+
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+                  "footer1.xml")
+        self.relationship_list[-1].rel_id = footer_rel_id
+
+        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+                  "header1.xml")
+        self.relationship_list[-1].rel_id = header_rel_id
+
+        self.relationship_list.extend(relationship_list)
+
+    def _rel(self, type_, target):
+        relationship = Relationship(type_, target)
+        self.relationship_list.append(relationship)
+
+    def build(self):
+        for index, rel in enumerate(self.relationship_list, start=1):
+            rel.rel_id.set_index(index)
+            rel.build(self.root)
 
 
 class Theme1File(FilledXMLFile):
@@ -465,7 +617,7 @@ class Theme1File(FilledXMLFile):
 
 
 class DocumentFile(EmptyXMLFile):
-    def __init__(self):
+    def __init__(self, cover_list, heading_list, content_list, footer_rel_id, header_rel_id):
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -476,8 +628,26 @@ class DocumentFile(EmptyXMLFile):
               'xmlns:w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
         doc = E('w:document', ns)
-        body = SE(doc, 'w:body')
-        super().__init__('word/document.xml', body)
+        self.body = SE(doc, 'w:body')
+        super().__init__('word/document.xml', doc)
+
+        self.cover_list = cover_list
+        self.heading_list = heading_list
+        if len(heading_list) > 0:
+            self.heading_list.append(CatalogEnd())
+            self.heading_list.append(SectionPropInParagraph(None, None))
+        self.content_list = content_list
+        self.content_list.append(SectionProp(header_rel_id, footer_rel_id, 1))
+
+    def build(self):
+        for cover in self.cover_list:
+            cover.build(self.body)
+
+        for heading in self.heading_list:
+            heading.build(self.body)
+
+        for content in self.content_list:
+            content.build(self.body)
 
 
 class EndnotesFile(FilledXMLFile):
@@ -499,7 +669,7 @@ class FooterFile(FilledXMLFile):
 
 
 class FootnotesFile(EmptyXMLFile):
-    def __init__(self):
+    def __init__(self, footnote_list):
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -518,10 +688,15 @@ class FootnotesFile(EmptyXMLFile):
         SE(SE(SE(note, 'w:p'), 'w:r'), 'w:continuationSeparator')
 
         super().__init__('word/footnotes.xml', footnotes)
+        self.footnote_list = footnote_list
+
+    def build(self):
+        for footnote in self.footnote_list:
+            footnote.build(self.root)
 
 
 class HeaderFile(EmptyXMLFile):
-    def __init__(self):
+    def __init__(self, header):
         ns = {'xmlns:ve': 'http://schemas.openxmlformats.org/markup_compatibility/2006',
               'xmlns:o': 'urn:schemas-microsoft-com:office:office',
               'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -533,7 +708,13 @@ class HeaderFile(EmptyXMLFile):
               'xmlns:wne': 'http://schemas.microsoft.com/office/word/2006/wordml'}
         hdr = E('w:hdr', ns)
 
+        self.header = header
+
         super().__init__('word/header1.xml', hdr)
+
+    def build(self):
+        if self.header is not None:
+            self.header.build(self.root)
 
 
 class NumberingFile(FilledXMLFile):
@@ -558,21 +739,3 @@ class WebSettingsFile(FilledXMLFile):
     def __init__(self):
         data = """<w:webSettings xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:optimizeForBrowser/></w:webSettings>"""
         super().__init__('word/webSettings.xml', data)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
