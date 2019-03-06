@@ -64,11 +64,6 @@ class Report:
         self.add(tab)
         return tab.reference
 
-    def heading(self):
-        h = Heading()
-        self.block.add(h)
-        return h
-
 
 class ReportElement:
     def visit(self, visitor):

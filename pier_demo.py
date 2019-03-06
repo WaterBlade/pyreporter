@@ -14,11 +14,11 @@ Value = VariableValue
 
 Ra = V('R', 'a', inform='单桩竖向承载力特征值', unit=U('kN'))
 K = V('K', value=2, inform='安全系数')
-Quk = V('Q', 'uk', inform='单桩极限承载力标准值', unit=U('kN'))
-Qsk = V('Q', 'sk', inform='总极限吃的阻力标准值', unit=U('kN'))
-Qrk = V('Q', 'pk', inform='总极限端阻力标准值', unit=U('kN'))
-qsik = SV('q', 'sk', inform='桩侧土极限测阻力标准值', unit=U('kPa'))
-li = SV('l', inform='桩侧土对应的桩长', unit=U('m'))
+Quk = V('Q', 'uk', inform='单桩竖向极限承载力标准值', unit=U('kN'))
+Qsk = V('Q', 'sk', inform='土总极限侧阻力标准值', unit=U('kN'))
+Qrk = V('Q', 'pk', inform='岩总极限端阻力标准值', unit=U('kN'))
+qsik = SV('q', 'sk', inform='桩侧土i极限测阻力标准值', unit=U('kPa'))
+li = SV('l', inform='桩侧土i对应的桩长', unit=U('m'))
 ζr = V('ζ', 'r', inform='桩嵌岩段侧阻和端阻综合系数')
 frk = V('f', 'rk', inform='岩石饱和单轴抗压强度标准值', unit=U('kPa'))
 u = V('u', inform='桩身周长', unit=U('m'))
@@ -51,12 +51,12 @@ if __name__ == '__main__':
     R_calc.calc()
 
     rep = Report()
-    rep.set_cover(DefaultCover('康苏水库工程', '溢洪洞出口桩基计算', '水  工', '技  施'))
+    rep.set_cover(DefaultCover('康苏水库工程', '溢洪洞出口桩基单桩竖向承载力计算', '水  工', '技  施'))
 
     rep.add_heading('计算基本参数及结果', 1)
     rep.add_heading('基本参数', 2)
     rep.add_paragraph('桩身直径：', Value(d))
-    rep.add_paragraph('入土深度：', Value(hr))
+    rep.add_paragraph('入岩深度：', Value(hr))
     rep.add_paragraph('岩石单轴饱和抗压强度：', Value(frk))
 
     rep.add_heading('计算结果', 2)
@@ -77,6 +77,6 @@ if __name__ == '__main__':
     rep.add_paragraph('最终计算成果如下：')
     rep.add(Procedure(R_calc))
 
-    rep.save('康苏溢洪洞出口消能建筑物桩计算.docx')
+    rep.save('康苏溢洪洞出口桩基单桩竖向承载力计算.docx')
 
 

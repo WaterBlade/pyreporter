@@ -507,11 +507,14 @@ class SerialVariable(Variable):
         self._variable_list = list()
         self._curr = None
 
-    def new(self, inform=None):
+    def new(self, inform=None, value=None):
         index = len(self._variable_list) + 1
         v = VariableInSerial(serial=self, symbol=self.symbol, subscript=self.subscript,
                              index=index, unit=self.unit, precision=self.precision, inform=inform)
         self._variable_list.append(v)
+        self._curr = v
+        if value is not None:
+            self._curr.set(value)
         return v
 
     def __getitem__(self, item):
@@ -522,6 +525,10 @@ class SerialVariable(Variable):
 
     def calc(self):
         return self._curr.calc()
+
+    def set(self, value):
+        self._curr.set(value)
+        self.value = value
 
     def set_current(self, index):
         self._curr = self._variable_list[index]
@@ -567,7 +574,7 @@ class Formula(FormulaBase):
         self.long = long
 
     def calc(self):
-        self.variable.value = self.expression.calc()
+        self.variable.set(self.expression.calc())
         return self.variable.value
 
     def visit(self, visitor):
@@ -593,7 +600,7 @@ class PiecewiseFormula(FormulaBase):
     def calc(self):
         for exp, cond, long in zip(self.expression_list, self.condition_list, self.long_list):
             if cond.calc():
-                self.variable.value = exp.calc()
+                self.variable.set(exp.calc())
                 self.expression = exp
                 self.long = long
                 return self.variable.value

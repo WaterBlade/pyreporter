@@ -1,4 +1,4 @@
-from xml.etree.ElementTree import tostring
+from xml.etree.ElementTree import tostring, SubElement
 from xml.etree.ElementTree import Element as BaseElement
 from zipfile import ZipFile, ZIP_DEFLATED
 from collections import namedtuple
