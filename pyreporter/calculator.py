@@ -507,6 +507,10 @@ class SerialVariable(Variable):
         self._variable_list = list()
         self._curr = None
 
+    def clear(self):
+        self._variable_list = list()
+        self._curr = None
+
     def new(self, inform=None, value=None):
         index = len(self._variable_list) + 1
         v = VariableInSerial(serial=self, symbol=self.symbol, subscript=self.subscript,

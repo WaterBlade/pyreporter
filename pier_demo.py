@@ -30,7 +30,7 @@ Pi = V('π', value=math.pi, inform='圆周率')
 R_calc = Calculator()
 R_calc.add(Formula(Ra, 1/K*Quk))
 R_calc.add(Formula(Quk, Qsk + Qrk))
-R_calc.add(Formula(Qsk, u*Sum(qsik*li, [qsik, li])))
+R_calc.add(Formula(Qsk, Sum(u*qsik*li, [qsik, li])))
 R_calc.add(Formula(Qrk, ζr * frk * Ap))
 
 P_calc = Calculator()
@@ -48,7 +48,28 @@ if __name__ == '__main__':
 
     G_calc.calc()
     P_calc.calc()
-    R_calc.calc()
+
+    R_proc_list = list()
+    content_list = list()
+    L_list = [8.65,7.65,6.75,5.85,4.95,4.15,3.15,2.15,13.35,12.15,10.65,9.55,8.35,16.35,15.65,14.65,12.85,11.15,10.15,5.15,3.65,2.65]
+
+    qs1k = qsik.new()
+    qs1k.set(100)
+    qs2k = qsik.new()
+    qs2k.set(140)
+
+    content_list.append(['桩编号', '桩长', '标准值(kN)', '特征值(kN)'])
+    for i, L in enumerate(L_list, start=1):
+        li.clear()
+        l1 = li.new()
+        l1.set(L-3.15 if L > 3.15 else 0)
+
+        l2 = li.new()
+        l2.set(min(2, L-1.15))
+
+        R_calc.calc()
+        content_list.append([f'Z{i}', f'{L}', f'{round(Quk.value)}', f'{round(Ra.value)}'])
+        R_proc_list.append(Procedure(R_calc))
 
     rep = Report()
     rep.set_cover(DefaultCover('康苏水库工程', '溢洪洞出口桩基单桩竖向承载力计算', '水  工', '技  施'))
@@ -58,10 +79,11 @@ if __name__ == '__main__':
     rep.add_paragraph('桩身直径：', Value(d))
     rep.add_paragraph('入岩深度：', Value(hr))
     rep.add_paragraph('岩石单轴饱和抗压强度：', Value(frk))
+    rep.add_paragraph('砂砾石桩极限侧阻力标准值：', Value(qs1k))
+    rep.add_paragraph('强风化粉砂岩桩极限侧阻力标准值：', Value(qs2k))
 
     rep.add_heading('计算结果', 2)
-    rep.add_paragraph('单桩竖向承载力特征值：', Value(Ra))
-    rep.add_paragraph('单桩竖向极限承载力标准值：', Value(Quk))
+    rep.add_table(content_list, '不同桩长单桩竖向承载力')
 
     rep.add_heading('计算过程', 1)
     rep.add_heading('计算公式', 2)
@@ -74,8 +96,10 @@ if __name__ == '__main__':
     rep.add(Procedure(G_calc))
     rep.add_paragraph('根据规范5.3.9，综合系数插值计算如下：')
     rep.add(Procedure(P_calc))
-    rep.add_paragraph('最终计算成果如下：')
-    rep.add(Procedure(R_calc))
+
+    for i, proc in enumerate(R_proc_list, start=1):
+        rep.add_heading(f'桩编号Z{i}单桩竖向承载力计算', 3)
+        rep.add(proc)
 
     rep.save('康苏溢洪洞出口桩基单桩竖向承载力计算.docx')
 

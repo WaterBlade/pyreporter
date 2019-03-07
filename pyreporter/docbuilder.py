@@ -1,51 +1,62 @@
 from xml.etree.ElementTree import ElementTree as ET
-from xml.etree.ElementTree import Element as E
-from xml.etree.ElementTree import SubElement as SE
+from xml.etree.ElementTree import Element
+from xml.etree.ElementTree import SubElement
 from zipfile import ZipFile, ZIP_DEFLATED
+from collections import UserList
 
 
-class ReportBuilder:
+def E(tag, attrib={}, text=None):
+    e = Element(tag, attrib)
+    if text is not None:
+        e.text = text
+    return e
+
+
+def SE(e, tag, attrib={}, text=None):
+    se = SubElement(e, tag, attrib)
+    if text is not None:
+        se.text = text
+    return se
+
+
+class ContentBuilder:
     def __init__(self):
-        self.mark_list = list()
-        self.order_list = list()
-        self.footnote_id_list = list()
-        self.image_id_list = list()
+        self.mark_pool = IndexPool()
+        self.order_pool = OrderPool()
+        self.footnote_id_pool = IndexPool()
+        self.doc_rel_pool = IndexPool()
+        self.image_id_pool = IndexPool()
 
         self.relationship_list = list()
         self.footnote_list = list()
-        self.cover_list = list()
         self.heading_list = list()
         self.content_list = list()
 
-        self.header = None
-        self.file_list = list()
-
-    def set_cover(self):
-        pass
-
-    def set_header(self):
-        pass
-
-    def set_footer(self):
-        pass
-
     def heading(self, level=1, text=None):
-        heading = HeadingBuilder(level)
+        mark = self.mark_pool.mark()
+        order = self.order_pool.order(level)
+        heading_in_catalog = HeadingInCatalog(mark, order, level)
+        heading_in_body = HeadingInBody(mark, order, level)
 
-        self.mark_list.append(heading.mark)
-        self.order_list.append(heading.order)
+        self.mark_pool.append(mark)
+        self.order_pool.append(order)
+        self.heading_list.append(heading_in_catalog)
+        self.content_list.append(heading_in_body)
 
-        self.heading_list.append(heading.body_heading)
-        self.content_list.append(heading.log_heading)
+        builder = HeadingBuilder(heading_in_catalog, heading_in_body)
 
         if text is not None:
-            heading.text(text)
-        return heading
+            builder.text(text)
+        return builder
 
-    def paragraph(self):
-        para = ParagraphBuilder()
-        self.content_list.append(para.paragraph)
-        return para
+    def paragraph(self, text=None):
+        para = Paragraph()
+        self.content_list.append(para)
+
+        builder = ParagraphBuilder(para)
+        if text is not None:
+            builder.text(text)
+        return builder
 
     def table(self):
         pass
@@ -59,9 +70,24 @@ class ReportBuilder:
     def canvas(self):
         pass
 
-    def _build_file(self):
-        footer_rel_id = RelIndex()
-        header_rel_id = RelIndex()
+
+class ReportBuilder(ContentBuilder):
+    def __init__(self):
+        super().__init__()
+        self.cover_list = list()
+
+        self.header = None
+        self.file_list = list()
+
+    def set_cover(self):
+        pass
+
+    def set_header(self, text: str):
+        pass
+
+    def _build(self):
+        footer_rel_id = self.doc_rel_pool.relationship()
+        header_rel_id = self.doc_rel_pool.relationship()
 
         lst = self.file_list
         lst.append(ContentTypeFile())
@@ -71,27 +97,30 @@ class ReportBuilder:
         lst.append(ItemProps1File())
         lst.append(AppFile())
         lst.append(CoreFile())
-        lst.append(DocumentXMLRelsFile(self.relationship_list, footer_rel_id, header_rel_id))
+        lst.append(DocumentXMLRelsFile(self.relationship_list, footer_rel_id, header_rel_id, self.doc_rel_pool))
         lst.append(Theme1File())
         lst.append(DocumentFile(self.cover_list, self.heading_list, self.content_list, footer_rel_id, header_rel_id))
         lst.append(EndnotesFile())
         lst.append(FontTableFile())
         lst.append(FooterFile())
-
-        footnotes = FootnotesFile(self.footnote_list)
-
-        lst.append(footnotes)
+        lst.append(FootnotesFile(self.footnote_list))
         lst.append(HeaderFile(self.header))
         lst.append(NumberingFile())
         lst.append(SettingsFile())
         lst.append(StylesFile())
         lst.append(WebSettingsFile())
 
+        self.mark_pool.build()
+        self.order_pool.build()
+        self.footnote_id_pool.build()
+        self.doc_rel_pool.build()
+        self.image_id_pool.build()
+
     def save(self, path):
-        self._build_file()
-        with ZipFile(path, 'w', ZIP_DEFLATED) as zip:
+        self._build()
+        with ZipFile(path, 'w', ZIP_DEFLATED) as zip_:
             for file in self.file_list:
-                file.write(zip)
+                file.write(zip_)
 
 
 class Builder:
@@ -103,17 +132,14 @@ class CoverBuilder(Builder):
 
 
 class HeadingBuilder(Builder):
-    def __init__(self, level=1):
-        self.mark = Mark()
-        self.order = CatalogOrder(level)
-
-        self.body_heading = HeadingInBody(mark=self.mark, order=self.order, level=level)
-        self.log_heading = HeadingInCatalog(mark=self.mark, order=self.order, level=level)
+    def __init__(self, heading_in_catalog, heading_in_body):
+        self.heading_in_body = heading_in_catalog
+        self.heading_in_catalog = heading_in_body
 
     def text(self, string: str):
         text = Text(string)
-        self.body_heading.append(text)
-        self.log_heading.append(text)
+        self.heading_in_body.append(text)
+        self.heading_in_catalog.append(text)
 
     def footnote(self):
         pass
@@ -123,8 +149,8 @@ class HeadingBuilder(Builder):
 
 
 class ParagraphBuilder(Builder):
-    def __init__(self):
-        self.paragraph = Paragraph()
+    def __init__(self, paragraph):
+        self.paragraph = paragraph
 
     def text(self, string: str, font=None, size=None, italic=None, bold=None, underline=None):
         self.paragraph.append(Text(string, font, size, italic, bold, underline))
@@ -165,39 +191,14 @@ class CanvasBuilder(Builder):
 
 
 class FootnoteBuilder(Builder):
-    def __init__(self):
-        pass
+    def __init__(self, footnote):
+        self.footnote = footnote
 
     def text(self, string: str):
         pass
 
     def math(self):
         pass
-
-    def build(self, base):
-        pass
-
-
-class Component:
-    def build(self, base):
-        pass
-
-
-class Composite(Component):
-    def __init__(self):
-        self.component_list = list()
-
-    def append(self, component: Component):
-        assert isinstance(component, Component)
-        self.component_list.append(component)
-
-    def extend(self, composite):
-        assert isinstance(composite, Composite)
-        self.component_list.extend(composite.component_list)
-
-    def build(self, base):
-        for item in self.component_list:
-            item.build(base)
 
 
 class IndexRef:
@@ -206,6 +207,32 @@ class IndexRef:
 
     def set_index(self, index: int):
         self.index = index
+
+
+class IndexPool(UserList):
+    def __init__(self, start=1):
+        super().__init__()
+        self.start = start
+
+    def build(self):
+        for i, index in enumerate(self.data, start=self.start):
+            index.set_index(i)
+
+    def _new_item(self, item):
+        self.append(item)
+        return item
+
+    def mark(self):
+        return self._new_item(Mark())
+
+    def footnote(self):
+        return self._new_item(FootnoteIndex())
+
+    def relationship(self):
+        return self._new_item(RelIndex())
+
+    def image(self):
+        return self._new_item(ImageIndex())
 
 
 class Mark(IndexRef):
@@ -252,6 +279,120 @@ class CatalogOrder:
         return self.order
 
 
+class OrderPool(UserList):
+    def __init__(self):
+        super().__init__()
+        self.level_list = list()
+
+    def order(self, level):
+        o = CatalogOrder(level)
+        self.append(o)
+        return o
+
+    def build(self):
+        for order in self.data:
+            if order.level > len(self.level_list):
+                if len(self.level_list) == 0:
+                    order.set_first()
+                self.level_list.append(1)
+            else:
+                self.level_list = self.level_list[:order.level]
+                self.level_list[-1] += 1
+            order.set_order('.'.join(str(item) for item in self.level_list))
+
+
+# =======================================================================
+# component
+# =======================================================================
+
+
+class Component:
+    def build(self, base):
+        pass
+
+
+class Composite(Component):
+    def __init__(self):
+        self.component_list = list()
+
+    def append(self, component: Component):
+        assert isinstance(component, Component)
+        self.component_list.append(component)
+
+    def extend(self, composite):
+        assert isinstance(composite, Composite)
+        self.component_list.extend(composite.component_list)
+
+    def build(self, base):
+        for item in self.component_list:
+            item.build(base)
+
+
+# header
+class Header(Component):
+    def __init__(self, text: str):
+        self.text = text
+
+    def build(self, base):
+        p = SE(base, 'w:p')
+        SE(SE(p, 'w:pPr'), 'w:pStyle', {'w:val': 'a4'})
+        r = SE(p, 'w:r')
+        SE(SE(r, 'w:rPr'), 'w:rFonts', {'w:eastAsia': '楷体'})
+        SE(r, 'w:t', text=self.text)
+
+
+# catalog
+class HeadingInCatalog(Composite):
+    def __init__(self, mark: Mark, order: CatalogOrder, level: int):
+        super().__init__()
+        self.mark = mark
+        self.order = order
+        self.level = level
+
+    def build(self, base):
+        if self.level <= 3:
+            if self.order.is_first:
+                para = SE(base, 'w:p')
+                SE(SE(para, 'w:pPr'), 'w:jc', {'w:val': 'center'})
+                run = SE(para, 'w:r')
+                prop = SE(run, 'w:rPr')
+                SE(prop, 'w:b')
+                SE(prop, 'w:sz', {'w:val': '32'})
+                SE(run, 'w:t', text='目录')
+
+            para = SE(base, 'w:p')
+            prop = SE(para, 'w:pPr')
+            SE(prop, 'w:pStyle', {'w:val': f'{self.level*10}'})
+            tabs = SE(prop, 'w:tabs')
+            SE(tabs, 'w:tab', {'w:val': 'left', 'w:pos': f'{420+630*(self.level-1)}'})
+            SE(tabs, 'w:tab', {'w:val': 'right', 'w:leader': 'dot', 'w:pos': '8296'})
+
+            if self.order.is_first:
+                SE(SE(para, 'w:r'), 'w:fldChar', {'w:fldCharType': 'begin'})
+                SE(SE(para, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=' ')
+                SE(SE(para, 'w:r'), 'w:instrText', text='TOC \\o "1-3" \\h \\z \\u')
+                SE(SE(para, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=' ')
+                SE(SE(para, 'w:r'), 'w:fldChar', {'w:fldCharType': 'separate'})
+
+            link = SE(para, 'w:hyperlink', {'w:anchor': self.mark.get_name(), 'w:history': '1'})
+            assert self.order is not None
+            SE(SE(link, 'w:r'), 'w:t', text=self.order.get_order())
+            SE(SE(link, 'w:r'), 'w:tab')
+            super().build(link)
+            SE(SE(link, 'w:r'), 'w:tab')
+            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'begin'})
+            SE(SE(link, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=f' PAGEREF {self.mark.get_name()} \\h ')
+            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'separate'})
+            SE(SE(link, 'w:r'), 'w:t', text='0')
+            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
+
+
+class CatalogEnd(Component):
+    def build(self, base):
+        SE(SE(SE(base, 'w:p'), 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
+
+
+# body
 class Text(Component):
     def __init__(self, text, font=None, size=None, italic=None, bold=None, underline=None):
         self.text = text
@@ -281,6 +422,69 @@ class Text(Component):
                 pass
 
         SE(run, 'w:t', text=self.text)
+
+
+class HeadingInBody(Composite):
+    def __init__(self, mark: Mark, order: CatalogOrder, level: int):
+        super().__init__()
+        self.mark = mark
+        self.order = order
+        self.level = level
+
+    def build(self, base):
+        if not self.order.is_first and self.level == 1:
+            SE(SE(SE(base, 'w:p'), 'w:r'), 'w:br', {'w:type': 'page'})
+        para = SE(base, 'w:p')
+        SE(SE(para, 'w:pPr'), 'w:pStyle', {'w:val': f'{self.level}'})
+        SE(para, 'w:bookmarkStart', {'w:id': self.mark.get_id(), 'w:name': self.mark.get_name()})
+        super().build(para)
+        SE(para, 'w:bookmarkEnd', {'w:id': self.mark.get_id()})
+
+
+class Paragraph(Composite):
+    def build(self, base):
+        para = SE(base, 'w:p')
+        prop = SE(para, 'w:pPr')
+        SE(prop, 'w:spacing', {'w:before': '156', 'w:after': '156'})
+        SE(prop, 'w:ind', {'w:firstLine': '420'})
+        super().build(para)
+
+
+class SectionProp(Component):
+    def __init__(self, header_rel_id, footer_rel_id, page_start=None):
+        self.header_rel_id = header_rel_id
+        self.footer_rel_id = footer_rel_id
+        self.page_start = page_start
+
+    def build(self, base):
+        sect_pr = SE(base, 'w:sectPr')
+
+        if self.header_rel_id is not None:
+            SE(sect_pr,
+               'w:headerReference',
+               {'w:type': 'default',
+                'r:id': self.header_rel_id.get_id()})
+        if self.footer_rel_id is not None:
+            SE(sect_pr,
+               'w:footerReference',
+               {'w:type': 'default',
+                'r:id': self.footer_rel_id.get_id()})
+
+        SE(sect_pr, 'w:pgSz', {'w:w': '11906', 'w:h': '16838'})
+        SE(sect_pr, 'w:pgMar', {'w:top': '1440', 'w:right': '1800',
+                                'w:bottom': '1440', 'w:left': '1800',
+                                'w:footer': '992', 'w:gutter': '0'})
+
+        if self.page_start is not None:
+            SE(sect_pr, 'w:pgNumType', {'w:start': f'{self.page_start}'})
+        SE(sect_pr, 'w:cols', {'w:space': '425'})
+        SE(sect_pr, 'w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'})
+
+
+class SectionPropInParagraph(SectionProp):
+    def build(self, base):
+        prop = SE(SE(base, 'w:p'), 'w:pPr')
+        super().build(prop)
 
 
 class Bookmark(Component):
@@ -337,13 +541,19 @@ class FootnoteInDocument(Component):
         SE(run, 'w:footnoteReference', {'w:id': self.footnote_rel.get_id()})
 
 
-class FootnoteInFootnotes(Composite):
-    def __init__(self, footnote_rel: FootnoteIndex):
+class Table(Composite):
+    def __init__(self):
         super().__init__()
-        self.footnote_rel = footnote_rel
+
+
+# footnotes
+class FootnoteInFootnotes(Composite):
+    def __init__(self, footnote_index: FootnoteIndex):
+        super().__init__()
+        self.footnote_index = footnote_index
 
     def build(self, base):
-        foot = SE(base, 'w:footnote', {'w:id': self.footnote_rel.get_id()})
+        foot = SE(base, 'w:footnote', {'w:id': self.footnote_index.get_id()})
         para = SE(foot, 'w:p')
         SE(SE(para, 'w:pPr'), 'w:pStyle', {'w:val': 'a9'})
         run = SE(para, 'w:r')
@@ -354,140 +564,33 @@ class FootnoteInFootnotes(Composite):
         super().build(para)
 
 
-class HeadingInCatalog(Composite):
-    def __init__(self, mark: Mark, order: CatalogOrder, level: int):
-        super().__init__()
-        self.mark = mark
-        self.order = order
-        self.level = level
-
-    def build(self, base):
-        if self.level <= 3:
-            if self.order.is_first:
-                para = SE(base, 'w:p')
-                SE(SE(para, 'w:pPr'), 'w:jc', {'w:val': 'center'})
-                run = SE(para, 'w:r')
-                prop = SE(run, 'w:rPr')
-                SE(prop, 'w:b')
-                SE(prop, 'w:sz', {'w:val': '32'})
-
-            para = SE(base, 'w:p')
-            prop = SE(para, 'w:pPr')
-            SE(prop, 'w:pStyle', {'w:val': f'{self.level*10}'})
-            tabs = SE(prop, 'w:tabs')
-            SE(tabs, 'w:tab', {'w:val': 'left', 'w:pos': f'{420+630*(self.level-1)}'})
-            SE(tabs, 'w:tab', {'w:val': 'right', 'w:leader': 'dot', 'w:pos': '8296'})
-
-            if self.order.is_first:
-                SE(SE(para, 'w:r'), 'w:fldChar', {'w:fldCharType': 'begin'})
-                SE(SE(para, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=' ')
-                SE(SE(para, 'w:r'), 'w:instrText', text='TOC \\o "1-3" \\h \\z \\u')
-                SE(SE(para, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=' ')
-                SE(SE(para, 'w:r'), 'w:fldChar', {'w:fldCharType': 'separate'})
-
-            link = SE(para, 'w:hyperlink', {'w:anchor': self.mark.get_name(), 'w:history': '1'})
-            assert self.order is not None
-            SE(SE(link, 'w:r'), 'w:t', text=self.order.get_order())
-            SE(SE(link, 'w:r'), 'w:tab')
-            super().build(link)
-            SE(SE(link, 'w:r'), 'w:tab')
-            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'begin'})
-            SE(SE(link, 'w:r'), 'w:instrText', {'xml:space': 'preserve'}, text=f' PAGEREF {self.mark.get_name()} \\h ')
-            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'separate'})
-            SE(SE(link, 'w:r'), 'w:t', text='0')
-            SE(SE(link, 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
-
-
-class CatalogEnd(Component):
-    def build(self, base):
-        SE(SE(SE(base, 'w:p'), 'w:r'), 'w:fldChar', {'w:fldCharType': 'end'})
-
-
-class HeadingInBody(Composite):
-    def __init__(self, mark: Mark, order: CatalogOrder, level: int):
-        super().__init__()
-        self.mark = mark
-        self.order = order
-        self.level = level
-
-    def build(self, base):
-        if not self.order.is_first and self.level == 1:
-            SE(SE(SE(base, 'w:p'), 'w:r'), 'w:br', {'w:type': 'page'})
-        para = SE(base, 'w:p')
-        SE(SE(para, 'w:pPr'), 'w:pStyle', {'w:val': f'{self.level}'})
-        SE(SE(para, 'w:bookmarkStart', {'w:id': self.mark.get_id(), 'w:name': self.mark.get_name()}))
-        super().build(para)
-        SE(SE(para, 'w:bookmarkEnd', {'w:id': self.mark.get_id()}))
-
-
-class Paragraph(Composite):
-    def build(self, base):
-        para = SE(base, 'w:p')
-        prop = SE(para, 'w:pPr')
-        SE(prop, 'w:spacing', {'w:before': '156', 'w:after': '156'})
-        SE(prop, 'w:ind', {'w:firstLine': '420'})
-        super().build(para)
-
-
-class SectionProp(Component):
-    def __init__(self, header_rel_id, footer_rel_id, page_start=None):
-        self.header_rel_id = header_rel_id
-        self.footer_rel_id = footer_rel_id
-        self.page_start = page_start
-
-    def build(self, base):
-        sect_pr = SE(base, 'w:sectPr')
-
-        if self.header_rel_id is not None:
-            SE(sect_pr,
-               'w:headerReference',
-               {'w:type': 'default',
-                'r:id': self.header_rel_id.get_id()})
-        if self.footer_rel_id is not None:
-            SE(sect_pr,
-               'w:footerReference',
-               {'w:type': 'default',
-                'r:id': self.footer_rel_id.get_id()})
-
-        SE(sect_pr, 'w:pgSz', {'w:w': '11906', 'w:h': '16838'})
-        SE(sect_pr, 'w:pgMar', {'w:top': '1440', 'w:right': '1800',
-                                'w:bottom': '1440', 'w:left': '1800',
-                                'w:footer': '992', 'w:gutter': '0'})
-
-        if self.page_start is not None:
-            SE(sect_pr, 'w:pgNumType', {'w:start': f'{self.page_start}'})
-        SE(sect_pr, 'w:cols', {'w:space': '425'})
-        SE(sect_pr, 'w:docGrid', {'w:type': 'lines', 'w:linePitch': '312'})
-
-
-class SectionPropInParagraph(SectionProp):
-    def build(self, base):
-        prop = SE(SE(base, 'w:p'), 'w:pPr')
-        super().build(prop)
-
-
 class Relationship(Component):
-    def __init__(self, type_, target):
-        self.rel_id = RelIndex()
+    def __init__(self, rel_index, type_, target):
+        self.rel_index = rel_index
         self.type_ = type_
         self.target = target
 
     def build(self, base):
-        SE(base, 'Relationship', {'Id': self.rel_id.get_id(), 'Type': self.type_, 'Target': self.target})
+        SE(base, 'Relationship', {'Id': self.rel_index.get_id(), 'Type': self.type_, 'Target': self.target})
 
 
 class ImageRelationship(Component):
-    def __init__(self, index: ImageIndex, format_: str):
-        self.rel_id = RelIndex()
+    def __init__(self, rel_index, index: ImageIndex, format_: str):
+        self.rel_index = rel_index
         self.index = index
         self.format_ = format_
 
     def build(self, base):
         SE(base,
            'Relationship',
-           {'Id': self.rel_id.get_id(),
+           {'Id': self.rel_index.get_id(),
             'Type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
             'Target': f'media/{self.index.get_name()}.{self.format_}'})
+
+
+# ===============================================================================
+# file
+# ===============================================================================
 
 
 class FilledPlainFile:
@@ -566,47 +669,55 @@ class CoreFile(FilledXMLFile):
 
 
 class DocumentXMLRelsFile(EmptyXMLFile):
-    def __init__(self, relationship_list, footer_rel_id, header_rel_id):
+    def __init__(self, relationship_list, footer_rel_id, header_rel_id, doc_rel_pool):
         ns = {'xmlns': 'http://schemas.openxmlformats.org/package/2006/relationships'}
         rels = E('Relationships', ns)
         super().__init__('word/_rels/document.xml.rels', rels)
         self.relationship_list = list()
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme",
                   "theme/theme1.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings",
                   "webSettings.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable",
                   "fontTable.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings",
                   "settings.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
                   "styles.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes",
                   "endnotes.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
                   "footnotes.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml",
                   "../customXml/item1.xml")
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
+        self._rel(doc_rel_pool.relationship(),
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
                   "numbering.xml")
 
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+        self._rel(footer_rel_id,
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
                   "footer1.xml")
-        self.relationship_list[-1].rel_id = footer_rel_id
 
-        self._rel("http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+        self._rel(header_rel_id,
+                  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
                   "header1.xml")
-        self.relationship_list[-1].rel_id = header_rel_id
 
         self.relationship_list.extend(relationship_list)
 
-    def _rel(self, type_, target):
-        relationship = Relationship(type_, target)
+    def _rel(self, rel_index, type_, target):
+        relationship = Relationship(rel_index, type_, target)
         self.relationship_list.append(relationship)
 
     def build(self):
-        for index, rel in enumerate(self.relationship_list, start=1):
-            rel.rel_id.set_index(index)
+        for rel in self.relationship_list:
             rel.build(self.root)
 
 
